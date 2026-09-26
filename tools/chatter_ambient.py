@@ -52,6 +52,7 @@ from chatter_group_general_reaction import (
     maybe_queue_group_general_reaction,
 )
 from chatter_text import pick_statement_length
+from chatter_persona import resolve_persona
 from chatter_prompts import (
     build_plain_statement_prompt,
     build_quest_statement_prompt,
@@ -309,6 +310,9 @@ def process_statement(
     bot['gear'] = build_gear_context(
         db, bot['guid'], bot['class'], config,
     )
+    bot['persona'] = resolve_persona(
+        db, bot['guid'], bot['name'], mode,
+    )
 
     # Talent context injection (speaker only)
     speaker_talent = None
@@ -528,6 +532,10 @@ def process_conversation(
     )
 
     attach_speaker_gear(db, bots, config)
+    for b in bots:
+        b['persona'] = resolve_persona(
+            db, b['guid'], b['name'], mode,
+        )
 
     # Talent context injection (speaker only,
     # uses first bot as representative)

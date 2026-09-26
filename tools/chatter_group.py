@@ -33,7 +33,6 @@ import time
 
 # Module-level config defaults (set by init_group_config)
 _chat_history_limit = 10
-_spice_count = 2
 
 from chatter_shared import (
     call_llm, cleanup_message, strip_speaker_prefix,
@@ -92,12 +91,21 @@ from chatter_mode import (
     build_player_prompt_header_from_dict,
 )
 from chatter_prompts import (
-    pick_random_tone,
+    configure_prompt_flavor,
     maybe_get_creative_twist,
     build_environmental_context_lines,
-    generate_conversation_mood_sequence,
     generate_conversation_length_sequence,
-    pick_personality_spices,
+    maybe_pick_personality_spices,
+    format_spices_line,
+    TWIST_LABEL,
+    TWIST_LABEL_CONVERSATION,
+)
+from chatter_persona import (
+    build_cast_lines,
+    build_persona_block,
+    fallback_tone,
+    persona_from_fields,
+    without_backstory,
 )
 from chatter_group_state import (
     set_group_chat_history_limit,
@@ -147,7 +155,6 @@ from chatter_memory import (
     _active_sessions,
 )
 from chatter_group_prompts import (
-    set_prompt_spice_count,
     _pick_length_hint,
     build_bot_greeting_prompt,
     build_bot_welcome_prompt,
@@ -225,7 +232,7 @@ __all__ = [
 
 def init_group_config(config):
     """Initialize module-level config values."""
-    global _chat_history_limit, _spice_count
+    global _chat_history_limit
     try:
         val = int(
             config.get('LLMChatter.ChatHistoryLimit', 10)
@@ -233,19 +240,8 @@ def init_group_config(config):
     except (ValueError, TypeError):
         val = 10
     _chat_history_limit = max(1, min(val, 50))
-    try:
-        _spice_count = int(config.get(
-            'LLMChatter.PersonalitySpiceCount', 2
-        ))
-        _spice_count = max(0, min(_spice_count, 5))
-    except Exception:
-        logger.error(
-            "Failed to parse PersonalitySpiceCount",
-            exc_info=True,
-        )
-        _spice_count = 2
-    # Keep moved prompt builders in sync.
-    set_prompt_spice_count(_spice_count)
+    # Spice/twist gating lives with its owner.
+    configure_prompt_flavor(config)
     # Keep shared group helper state in sync.
     set_group_chat_history_limit(_chat_history_limit)
 
@@ -1881,6 +1877,7 @@ def process_group_player_msg_event(
                 'trait1': bot_row['trait1'],
                 'trait2': bot_row['trait2'],
                 'trait3': bot_row['trait3'],
+                'tone': stored_tone,
                 'travel_mode': travel_state.get('mode') or '',
                 'travel_context': travel_context,
                 'travel_state': travel_state,
@@ -2634,11 +2631,14 @@ def _build_composition_comment_prompt(
         if ctx:
             rp_context = f"\n{ctx}"
 
+    tone = stored_tone or fallback_tone(
+        bot.get('guid'), bot.get('name'), mode
+    )
     prompt = (
         f"{build_player_prompt_header_from_dict(bot, mode)}\n"
         f"Your personality: {trait_str}"
         f"\nYour tone: "
-        f"{stored_tone or pick_random_tone(mode)}"
+        f"{tone}"
         f"{rp_context}\n"
     )
     if speaker_talent_context:
@@ -2682,15 +2682,11 @@ def _build_composition_comment_prompt(
         f"characters). No greetings — you already "
         f"said hello."
     )
-    spices = pick_personality_spices(
-        mode=mode, spice_count_override=_spice_count
+    spice_line = format_spices_line(
+        maybe_pick_personality_spices(mode)
     )
-    if spices:
-        prompt += (
-            "\nBackground feelings (texture, "
-            "not the topic): "
-            + "; ".join(spices)
-        )
+    if spice_line:
+        prompt += f"\n{spice_line}"
     return append_json_instruction(
         prompt, allow_action
     )
@@ -2898,6 +2894,7 @@ def build_idle_chatter_prompt(
     memories=None,
     backstory=None,
     travel_context='',
+    persona=None,
 ):
     """Build prompt for idle party chat.
 
@@ -2912,9 +2909,16 @@ def build_idle_chatter_prompt(
         current_weather: weather string (overworld)
         zone_id: for zone flavor
         map_id: for dungeon flavor
+        persona: resolved Persona; built from traits,
+            stored_tone and backstory when omitted
     """
     is_rp = (mode == 'roleplay')
-    trait_str = ', '.join(traits)
+    if persona is None:
+        persona = persona_from_fields(
+            bot.get('name', ''), mode, bot.get('guid', 0),
+            traits=traits, tone=stored_tone,
+            backstory=backstory,
+        )
 
     # --------------------------------------------------
     # LEAN MEMORY PATH — when memories are present,
@@ -2928,7 +2932,6 @@ def build_idle_chatter_prompt(
         ]
         sanitized = [s for s in sanitized if s]
         if sanitized:
-            tone = stored_tone or pick_random_tone(mode)
             p_label = (
                 player_name
                 or 'your party leader'
@@ -2936,10 +2939,14 @@ def build_idle_chatter_prompt(
             mem_lines = '\n'.join(
                 f"  - {m}" for m in sanitized
             )
+            # The memory is the focus here, so the
+            # backstory stays out of this path.
+            memory_persona = build_persona_block(
+                without_backstory(persona), mode
+            )
             prompt = (
                 f"{build_player_prompt_header_from_dict(bot, mode)}\n"
-                f"Your personality: {trait_str}\n"
-                f"Your tone: {tone}\n"
+                f"{memory_persona}\n"
             )
             if speaker_talent_context:
                 prompt += (
@@ -3033,10 +3040,7 @@ def build_idle_chatter_prompt(
     # --------------------------------------------------
     # NORMAL PATH — no memories, full context prompt
     # --------------------------------------------------
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    twist = maybe_get_creative_twist(mode=mode)
     # Detect dungeon/BG before topic selection so we
     # can skip AMBIENT topics when inside an instance
     # or battleground.
@@ -3187,30 +3191,18 @@ def build_idle_chatter_prompt(
 
     prompt = (
         f"{build_player_prompt_header_from_dict(bot, mode)}\n"
-        f"Your personality: {trait_str}\n"
+        f"{build_persona_block(persona, mode)}\n"
     )
     if speaker_talent_context:
         prompt += f"{speaker_talent_context}\n"
-    prompt += (
-        f"Your tone: {tone}\n"
-    )
     if travel_context:
         label = (
             "Travel context"
             if is_rp else "Character gameplay travel state"
         )
         prompt += f"{label}: {travel_context}\n"
-    if is_rp and backstory:
-        prompt += (
-            f"\n<backstory>\n"
-            f"Your history: {backstory}\n"
-            f"Draw from this background naturally "
-            f"if it fits the moment -- don't force "
-            f"it.\n"
-            f"</backstory>\n"
-        )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
 
     party_ctx = (
         f"You're in a party, currently {topic}."
@@ -3236,15 +3228,11 @@ def build_idle_chatter_prompt(
         f"- Stick to observation, opinion, banter, "
         f"and small talk"
     )
-    spices = pick_personality_spices(
-        mode=mode, spice_count_override=_spice_count
+    spice_line = format_spices_line(
+        maybe_pick_personality_spices(mode)
     )
-    if spices:
-        prompt += (
-            "\nBackground feelings (texture, "
-            "not the topic): "
-            + "; ".join(spices)
-        )
+    if spice_line:
+        prompt += f"\n{spice_line}"
     anti_rep = build_anti_repetition_context(
         recent_messages
     )
@@ -3268,6 +3256,7 @@ def build_idle_conversation_prompt(
     area_id=0,
     memories_map=None,
     backstory_map=None,
+    personas=None,
 ):
     """Build prompt for a multi-bot idle conversation.
 
@@ -3288,6 +3277,9 @@ def build_idle_conversation_prompt(
         current_weather: weather string (overworld)
         player_name: real player name if known
         dungeon_bosses: list of boss names
+        personas: dict bot name -> Persona; built from
+            traits_map, each bot's 'tone' and
+            backstory_map when omitted
     """
     is_rp = (mode == 'roleplay')
     num_bots = len(bots)
@@ -3295,6 +3287,22 @@ def build_idle_conversation_prompt(
     msg_count = select_conversation_message_count(
         num_bots, 4, 4
     )
+    if personas is None:
+        personas = {
+            b['name']: persona_from_fields(
+                b['name'], mode, b.get('guid', 0),
+                traits=(traits_map or {}).get(b['name']),
+                tone=b.get('tone'),
+                backstory=(backstory_map or {}).get(
+                    b['name']
+                ),
+            )
+            for b in bots
+        }
+    cast = [
+        personas[name] for name in bot_names
+        if name in personas
+    ]
 
     # --------------------------------------------------
     # LEAN MEMORY PATH — when any bot has memories,
@@ -3352,13 +3360,6 @@ def build_idle_conversation_prompt(
                 f"{', '.join(bot_names)}"
             )
             for bot in bots:
-                t = traits_map.get(
-                    bot['name'], []
-                )
-                trait_str = (
-                    ', '.join(t)
-                    if t else 'average'
-                )
                 dead_tag = ""
                 if bot.get('is_dead'):
                     dead_tag = (
@@ -3369,8 +3370,7 @@ def build_idle_conversation_prompt(
                     f"{bot['name']} is a level "
                     f"{bot['level']} "
                     f"{bot['race']} "
-                    f"{bot['class']} "
-                    f"(personality: {trait_str})"
+                    f"{bot['class']}"
                     f"{dead_tag}"
                 )
                 append_speaker_gear(parts, bot, indent='')
@@ -3384,6 +3384,13 @@ def build_idle_conversation_prompt(
                         f"{bot['name']} {travel_label}: "
                         f"{bot['travel_context']}"
                     )
+
+            # Memories are the focus here, so
+            # backstories stay out of this path.
+            parts.extend(build_cast_lines(
+                [without_backstory(p) for p in cast],
+                mode,
+            ))
 
             # Per-bot memory blocks
             for b in bots:
@@ -3562,10 +3569,6 @@ def build_idle_conversation_prompt(
     seen_races = set()
     seen_classes = set()
     for bot in bots:
-        t = traits_map.get(bot['name'], [])
-        trait_str = (
-            ', '.join(t) if t else 'average'
-        )
         dead_tag = ""
         if bot.get('is_dead'):
             dead_tag = (
@@ -3575,8 +3578,7 @@ def build_idle_conversation_prompt(
         parts.append(
             f"{bot['name']} is a level "
             f"{bot['level']} {bot['race']} "
-            f"{bot['class']} "
-            f"(personality: {trait_str})"
+            f"{bot['class']}"
             f"{dead_tag}"
         )
         append_speaker_gear(parts, bot)
@@ -3620,24 +3622,9 @@ def build_idle_conversation_prompt(
                     parts.append(f"  {shared_class}")
                 seen_classes.add(cls_role_key)
 
-    # Inject backstories for participating bots
-    if is_rp and backstory_map:
-        bs_lines = []
-        for bot in bots:
-            bs = backstory_map.get(bot['name'])
-            if bs:
-                bs_lines.append(
-                    f"  {bot['name']}: {bs}"
-                )
-        if bs_lines:
-            parts.append(
-                "<backstories>\n"
-                + "\n".join(bs_lines)
-                + "\nDraw from these backgrounds "
-                "naturally if they fit the moment "
-                "-- don't force them.\n"
-                "</backstories>"
-            )
+    # Per-speaker personality, tone, backstory (RP)
+    # and real event mood. Nothing below overrides it.
+    parts.extend(build_cast_lines(cast, mode))
 
     if speaker_talent_context:
         parts.append(speaker_talent_context)
@@ -3658,44 +3645,29 @@ def build_idle_conversation_prompt(
     if topic:
         parts.append(f"Topic: {topic}")
 
-    # Tone and twist
-    tone = pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
-    parts.append(f"Overall tone: {tone}")
+    twist = maybe_get_creative_twist(mode=mode)
     if twist:
-        parts.append(f"Creative twist: {twist}")
+        parts.append(
+            f"{TWIST_LABEL_CONVERSATION}: {twist}"
+        )
 
     # Fixed message count keeps idle conversation
     # volume constant regardless of group size.
     # Bots still all participate via round-robin
     # speaker assignment (bot_names[i % num_bots]).
-    mood_sequence = (
-        generate_conversation_mood_sequence(
-            msg_count, mode
-        )
-    )
     length_sequence = (
         generate_conversation_length_sequence(
             msg_count
         )
     )
-
-    twist_log = (
-        f", twist={twist}" if twist else ""
-    )
-
     parts.append(
-        "\nMOOD AND LENGTH SEQUENCE "
-        "(follow for each message):"
+        "\nLENGTH SEQUENCE (follow for each message):"
     )
-    for i, mood in enumerate(mood_sequence):
+    for i, length in enumerate(length_sequence):
         speaker = bot_names[i % num_bots]
         parts.append(
             f"  Message {i+1} ({speaker}): "
-            f"mood={mood}, "
-            f"length={length_sequence[i]}"
+            f"length={length}"
         )
 
     # Natural flow instruction for 3+ bots
@@ -3757,15 +3729,11 @@ def build_idle_conversation_prompt(
         "120 characters. Short is better."
     )
 
-    spices = pick_personality_spices(
-        mode=mode, spice_count_override=_spice_count
+    spice_line = format_spices_line(
+        maybe_pick_personality_spices(mode)
     )
-    if spices:
-        parts.append(
-            "Background feelings (texture, "
-            "not the topic): "
-            + "; ".join(spices)
-        )
+    if spice_line:
+        parts.append(spice_line)
 
     anti_rep = build_anti_repetition_context(
         recent_messages
@@ -4272,7 +4240,7 @@ def _idle_single_statement(
     ))
     if backstory_enabled:
         idle_chance = int(config.get(
-            'LLMChatter.Backstory.IdleChance', 25
+            'LLMChatter.Backstory.IdleChance', 100
         )) / 100.0
         if random.random() < idle_chance:
             idle_backstory = bot_row.get('backstory')
@@ -4470,6 +4438,9 @@ def _idle_conversation(
                 get_class_name(char['class']), config,
             ),
             'role': br.get('role'),
+            # Stored per-bot tone feeds the speaker's
+            # persona in the conversation prompt.
+            'tone': br.get('tone'),
             'is_dead': int(
                 br.get('health', 1)) == 0,
             'travel_mode': travel_state.get('mode') or '',
@@ -4571,7 +4542,7 @@ def _idle_conversation(
     ))
     if backstory_enabled:
         idle_chance = int(config.get(
-            'LLMChatter.Backstory.IdleChance', 25
+            'LLMChatter.Backstory.IdleChance', 100
         )) / 100.0
         _bs_map = {}
         for br in selected_rows:

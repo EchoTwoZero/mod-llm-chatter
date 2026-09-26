@@ -34,9 +34,9 @@ from chatter_group_state import (
     _get_recent_chat,
     format_chat_history,
     get_bot_traits,
-    get_bot_mood_label,
     update_bot_mood,
 )
+from chatter_persona import format_mood_line, resolve_mood
 from chatter_raid_base import dual_worker_dispatch
 
 logger = logging.getLogger(__name__)
@@ -296,15 +296,14 @@ def run_group_handler(
         # 10. Build prompt
         prompt = build_prompt(ctx)
 
-        # 11. Mood injection
+        # 11. Mood injection: the bot's real event
+        # mood, shared with guild and General.
         if inject_mood:
-            mood_label = get_bot_mood_label(
-                group_id, bot_guid,
+            mood_line = format_mood_line(
+                resolve_mood(bot_guid)
             )
-            if mood_label != 'neutral':
-                prompt += (
-                    f"\nCurrent mood: {mood_label}"
-                )
+            if mood_line:
+                prompt += f"\n{mood_line}"
 
         # 12. Compute delay
         actual_delay = (

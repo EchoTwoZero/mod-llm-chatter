@@ -520,6 +520,8 @@ handler map.
 - `tools/chatter_links.py`
 - `tools/chatter_events.py`
 - `tools/chatter_prompts.py`
+- `tools/chatter_persona.py` - bot persona (identity + real event
+  mood) for Party, Guild and General prompts
 - `tools/chatter_constants.py`
 - `tools/chatter_cache.py`
 - `tools/talent_catalog.py`
@@ -796,6 +798,41 @@ Changing `LLMChatter.ChatterMode` requires a bridge restart. Because
 `llm_group_cached_responses` has no mode column, bridge startup removes
 only `ready` pre-cache rows and then refills them under the active mode;
 used and expired history is left to normal cache hygiene.
+
+### Persona coherence
+
+A bot always speaks as the same person in Party, Guild and General chat.
+Nothing random overrides its identity.
+
+- **Identity**: grouped bots use the traits, tone and (roleplay)
+  backstory assigned when they joined, in Party, Guild and General
+  alike. Other bots use their stored identity if they have one.
+  Otherwise they get a stable fallback derived from the bot, the same
+  on every message and in every channel, instead of new random traits
+  per reply. Normal mode keeps its player-style personality and never
+  receives backstories.
+- **Mood**: comes only from real events (kills, loot, deaths, wipes,
+  level-ups...) and is shared across channels, so a bot that just wiped
+  sounds gloomy in guild chat too. Each new event nudges the mood back
+  toward neutral before applying its own effect, and a mood with no
+  events for two hours is ignored. A neutral bot gets no mood line at
+  all. Conversations have no random
+  per-message moods; emotions shift only in reaction to what is said,
+  through each speaker's personality.
+- **Flavor**: optional creative angles and background feelings
+  ("spices") still add variety, but they are rarer and worded as
+  subordinate to the speaker's personality.
+- **Backstory reach**: in roleplay mode, party idle chatter and idle
+  conversations include the backstory at
+  `LLMChatter.Backstory.IdleChance` percent (default 100).
+
+| Key | Default | Meaning |
+|---|---|---|
+| `LLMChatter.Persona.TwistChance` | 25 | Percent of prompts that get an optional creative angle |
+| `LLMChatter.Persona.SpiceChance` | 30 | Percent of prompts that get background feelings at all |
+| `LLMChatter.PersonalitySpiceCount` | 2 | How many background feelings when the spice roll passes |
+
+All three are bridge-side settings and need a bridge restart.
 
 ---
 

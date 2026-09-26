@@ -437,6 +437,51 @@ past gameplay events. Pre-cached group replies have no mode column, so
 the bridge deletes only `ready` cache rows at startup before refilling
 them under the current mode.
 
+## Persona Ownership
+
+`tools/chatter_persona.py` owns who is speaking and how they feel, for
+Party, Guild and General prompts. Prompt builders never roll their own
+tone, traits or mood.
+
+- **Identity resolution**: `resolve_persona()` uses the bot's
+  `llm_group_bot_traits` row (the given group, or the most recently
+  assigned one when Guild/General pass no group), then the persistent
+  `llm_bot_identities` row, then a deterministic fallback seeded from
+  the bot's name (GUID only when no name is known). The fallback makes
+  no DB writes or LLM calls, so any bot keeps the same traits and tone
+  on every message and in every channel. `fallback_tone()` gives the
+  same tone to single Party builders whose stored tone is missing.
+  Normal mode always uses `chatter_mode.resolve_player_personality()`
+  and never a stored backstory. Personas are resolved on every call
+  (no cache), so group joins and leaves apply immediately.
+- **Mood**: `resolve_mood()` reads the real event mood from
+  `chatter_group_state.get_bot_mood_label_by_guid()`, which uses the
+  bot's most recent live entry in the existing group mood store. A bot
+  that wiped in a party carries that mood into Guild and General.
+  The score drifts toward neutral as further events arrive, and an
+  entry older than two hours is ignored. A neutral or missing mood
+  renders no mood line; no mood is ever invented.
+- **Rendering**: `build_persona_block()` (one speaker) and
+  `build_cast_lines()` (conversations) render personas for party idle
+  chatter, party multi-bot conversations and General prompts. Both
+  state that personality and tone are fixed while mood, topic,
+  optional angles and background feelings only colour them.
+  Conversations also state that emotions shift only in reaction to
+  what is said. Single-event Party builders and Guild prompts keep
+  their own identity lines, but take tone from the stored value or
+  `fallback_tone()` and mood from `resolve_mood()`, never from a
+  random roll.
+- **Flavor**: `chatter_prompts.py` owns the gates. Creative twists use
+  `LLMChatter.Persona.TwistChance` and are labelled as optional angles.
+  Spices must pass `LLMChatter.Persona.SpiceChance` before
+  `LLMChatter.PersonalitySpiceCount` items are picked
+  (`maybe_pick_personality_spices()` + `format_spices_line()`).
+  Conversation prompts carry a per-message length sequence only; there
+  is no random per-message mood sequence.
+
+Bridge startup loads the flavor settings once from
+`chatter_group.init_group_config()` (`configure_prompt_flavor()`).
+
 ## System Prompt Architecture
 
 All prompt builders return a `PromptParts` object (defined in
@@ -795,7 +840,7 @@ This asymmetry is known and acceptable in the shipped source state.
 | `tools/chatter_group_handlers.py` | `bot_group_*` reaction handlers, `execute_player_msg_conversation()`, thin wrappers around the shared handler pipeline for most single-reaction group events |
 | `tools/chatter_handler_pipeline.py` | Shared `run_group_handler()` pipeline: extra_data parsing, guard checks, traits lookup, context assembly, prompt dispatch, chat storage, mood update, event completion/failure handling |
 | `tools/chatter_group_prompts.py` | Group prompt builders, nearby-object prompts, pre-cache prompt builders, `build_player_msg_conversation_prompt()`. All major party chatter builders accept `map_id=0` and inject `get_dungeon_flavor(map_id)` as location context when inside a dungeon instance, replacing zone/subzone lore. Excluded: OOM, low-health, level-up. |
-| `tools/chatter_group_state.py` | Group mood/traits/history state |
+| `tools/chatter_group_state.py` | Group mood/traits/history state; owns the event mood store, including the cross-channel `get_bot_mood_label_by_guid()` lookup |
 | `tools/chatter_duel.py` | Duel start/end handlers and prompt builders for `bot_group_duel_start` and `bot_group_duel_end` |
 | `tools/chatter_group_general_reaction.py` | General-to-party relay: queues and handles `bot_group_general_reaction` events when grouped bots react in party chat to bot-authored General lines |
 
@@ -810,7 +855,8 @@ This asymmetry is known and acceptable in the shipped source state.
 | `tools/chatter_llm.py` | Provider/model calls for Anthropic, OpenAI, Google Gemini, OpenRouter, and Ollama; `get_llm_client()` shared client factory; `_split_prompt()`, `_build_chat_messages()`, `_ollama_user_msg()`, `_apply_google_options()`, `_apply_openrouter_options()`, `_openrouter_headers()` for system/user prompt separation and provider tuning; delegates cross-model parameter selection to `llm_compat.py`; `label=` param logs every call via `chatter_request_logger` |
 | `tools/chatter_db.py` | DB access, inserts, zone/cache queries, `any_real_players_online()`, stale-group cleanup, and global group/Guild session cleanup |
 | `tools/chatter_links.py` | WoW link parsing and prompt-side link enrichment for player messages |
-| `tools/chatter_prompts.py` | Ambient/event prompt builders |
+| `tools/chatter_prompts.py` | Ambient/event prompt builders; twist and spice gating (`configure_prompt_flavor()`) |
+| `tools/chatter_persona.py` | Bot persona resolution (identity + real event mood) and the shared persona/cast renderers for Party, Guild and General |
 | `tools/chatter_general.py` | `player_general_msg` Python path |
 | `tools/chatter_memory.py` | Persistent memory system: session tracking, background memory generation via `queue_memory()`, flush/activate on farewell, orphan recovery. Key helpers: `_resolve_location()`, `_ensure_cap_and_insert()`, `_count_active_memories()`, `_evict_one_used()`. Memory prompts thread `player_name` so the LLM references the player by name (DB fallback from `player_guid` when caller doesn't supply it). Memories are one plain, factual sentence (target 160 characters); `_clamp_memory_text()` bounds them at write time (hard cap 240, cut at a sentence or word boundary), so prompts carry the stored memory whole instead of cutting it at 200 characters |
 | `tools/chatter_cache.py` | Mode-aware pre-cache refill and startup removal of ready rows generated under a previous mode |
@@ -1352,6 +1398,8 @@ source:
 | Group reaction runtime behavior | `tools/chatter_group_handlers.py` |
 | Shared group-handler pipeline behavior | `tools/chatter_handler_pipeline.py` |
 | Group prompt wording | `tools/chatter_group_prompts.py` |
+| Bot persona resolution, mood lookup, persona prompt wording | `tools/chatter_persona.py` |
+| Twist/spice frequency and wording | `tools/chatter_prompts.py` |
 | Group message insert behavior / preserve `emote: null` | `tools/chatter_group.py`, `tools/chatter_shared.py`, `tools/chatter_cache.py` |
 | General-channel Python behavior | `tools/chatter_general.py` |
 | General-to-party relay behavior | `tools/chatter_group_general_reaction.py` |

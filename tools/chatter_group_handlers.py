@@ -2324,7 +2324,8 @@ def _nearby_object_conversation(
         # Look up guid + traits from the traits table
         cursor = db.cursor(dictionary=True)
         cursor.execute("""
-            SELECT bot_guid, trait1, trait2, trait3
+            SELECT bot_guid, trait1, trait2, trait3,
+                   tone
             FROM llm_group_bot_traits
             WHERE group_id = %s
                 AND bot_name = %s
@@ -2350,6 +2351,7 @@ def _nearby_object_conversation(
         bots.append({
             'name': name,
             'guid': guid,
+            'tone': row.get('tone'),
             'class': get_class_name(
                 char['class']
             ),
@@ -2595,6 +2597,7 @@ def execute_player_msg_conversation(
         bots.append({
             'name': name,
             'guid': guid,
+            'tone': row.get('tone'),
             'class': get_class_name(
                 char['class']
             ),
@@ -2840,7 +2843,8 @@ def _quest_conversation_pick_bots(
     for name in picked:
         cursor = db.cursor(dictionary=True)
         cursor.execute("""
-            SELECT bot_guid, trait1, trait2, trait3
+            SELECT bot_guid, trait1, trait2, trait3,
+                   tone
             FROM llm_group_bot_traits
             WHERE group_id = %s
                 AND bot_name = %s
@@ -2865,6 +2869,7 @@ def _quest_conversation_pick_bots(
         bots.append({
             'name': name,
             'guid': guid,
+            'tone': row.get('tone'),
             'class': get_class_name(
                 char['class']
             ),

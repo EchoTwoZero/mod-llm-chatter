@@ -185,6 +185,14 @@ def update_bot_mood(
         )
 
 
+def _label_for_score(score: float) -> str:
+    """Map a mood score onto its MOOD_LABELS bucket."""
+    for low, high, label in MOOD_LABELS:
+        if low <= score < high:
+            return label
+    return 'neutral'
+
+
 def get_bot_mood_label(
     group_id: int, bot_guid: int,
 ) -> str:
@@ -194,10 +202,28 @@ def get_bot_mood_label(
             (group_id, bot_guid)
         )
         score = entry[0] if entry else 0.0
-        for low, high, label in MOOD_LABELS:
-            if low <= score < high:
-                return label
-        return 'neutral'
+        return _label_for_score(score)
+
+
+def get_bot_mood_label_by_guid(bot_guid: int) -> str:
+    """Get a bot's mood label regardless of channel.
+
+    Uses the most recently updated live entry for this bot across
+    groups, so guild and General prompts see the same event mood as
+    party chat. Entries past the stale window count as neutral,
+    matching the lifetime enforced by _evict_stale_moods.
+    """
+    with _bot_mood_scores_lock:
+        now = time.time()
+        latest = None
+        for (_, guid), (score, ts) in _bot_mood_scores.items():
+            if guid != bot_guid:
+                continue
+            if now - ts > _MOOD_STALE_SECONDS:
+                continue
+            if latest is None or ts > latest[1]:
+                latest = (score, ts)
+        return _label_for_score(latest[0] if latest else 0.0)
 
 
 def cleanup_group_moods(group_id: int):

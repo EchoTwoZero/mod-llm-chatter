@@ -50,15 +50,21 @@ def _mark_event(db, event_id: int, status: str) -> None:
 
 def _query_speaker(db, bot_guid: int) -> Dict[str, object]:
     """Load a speaker's class/race/level/gender plus their
-    stored personality (traits/tone/backstory) from the
-    bot-identity table. Returns {} if the bot is unknown."""
+    persona: stored identity (traits/tone/backstory) or the
+    deterministic fallback, and the bot's real event mood.
+    Returns {} if the bot is unknown.
+
+    The persona is resolved with roleplay semantics so the
+    raw identity survives here; prompt builders apply the
+    normal-mode boundary via resolve_player_personality.
+    """
     if not bot_guid:
         return {}
 
     try:
         cursor = db.cursor(dictionary=True)
         cursor.execute(
-            "SELECT class, race, gender, level "
+            "SELECT name, class, race, gender, level "
             "FROM characters WHERE guid = %s",
             (bot_guid,),
         )
@@ -66,24 +72,12 @@ def _query_speaker(db, bot_guid: int) -> Dict[str, object]:
         if not base:
             return {}
 
-        cursor.execute(
-            "SELECT trait1, trait2, trait3, tone, "
-            "       backstory "
-            "FROM llm_bot_identities "
-            "WHERE bot_guid = %s LIMIT 1",
-            (bot_guid,),
+        persona = resolve_persona(
+            db, bot_guid, base.get('name') or '',
+            'roleplay',
         )
-        ident = cursor.fetchone() or {}
-
-        traits = [
-            trait for trait in (
-                ident.get('trait1'),
-                ident.get('trait2'),
-                ident.get('trait3'),
-            )
-            if trait
-        ]
         return {
+            'guid': int(bot_guid),
             'class': get_class_name(
                 int(base.get('class', 0) or 0)
             ),
@@ -94,9 +88,10 @@ def _query_speaker(db, bot_guid: int) -> Dict[str, object]:
                 int(base.get('gender', 0) or 0)
             ),
             'level': int(base.get('level', 0) or 0),
-            'traits': traits,
-            'tone': ident.get('tone') or '',
-            'backstory': ident.get('backstory') or '',
+            'traits': list(persona.traits),
+            'tone': persona.tone,
+            'backstory': persona.backstory,
+            'mood': persona.mood,
         }
     except Exception:
         logger.error(
@@ -120,7 +115,12 @@ from chatter_mode import (
 )
 from chatter_prompts import (
     generate_conversation_length_sequence,
-    generate_conversation_mood_sequence,
+)
+from chatter_persona import (
+    CONVERSATION_EMOTION_RULE,
+    PERSONA_PRIORITY_RULE,
+    format_mood_line,
+    resolve_persona,
 )
 
 
@@ -287,6 +287,10 @@ def _build_guild_prompt(
         lines.append(
             f"Background: {speaker['backstory']}"
         )
+    mood_line = format_mood_line(speaker.get('mood', ''))
+    if mood_line:
+        lines.append(mood_line + ".")
+    lines.append(PERSONA_PRIORITY_RULE.format(who='you'))
     if guildmates:
         lines.append(
             f"Guildmates currently online: "
@@ -896,6 +900,11 @@ def _participant_identity_lines(
         lines.append(
             f"{name} background: {background[:400]}"
         )
+    mood_line = format_mood_line(
+        speaker.get('mood', ''), subject='them'
+    )
+    if mood_line:
+        lines.append(f"{name} {mood_line}.")
     return lines
 
 
@@ -1037,12 +1046,11 @@ def _build_guild_conversation_prompt(
         "asterisks, slash commands, or stage directions.",
         "HARD LIMIT: Never exceed 150 characters in any "
         "individual message.",
-        "\nMOOD AND LENGTH SEQUENCE:",
+        PERSONA_PRIORITY_RULE.format(who='the speakers'),
+        CONVERSATION_EMOTION_RULE,
+        "\nLENGTH SEQUENCE:",
     ])
 
-    moods = generate_conversation_mood_sequence(
-        message_count, mode
-    )
     lengths = generate_conversation_length_sequence(
         message_count
     )
@@ -1054,7 +1062,6 @@ def _build_guild_conversation_prompt(
         speaker = bot_names[index % len(bot_names)]
         instruction = (
             f"  Message {index + 1} ({speaker}): "
-            f"mood={moods[index]}, "
             f"length={lengths[index]}"
         )
         reference_plan = reference_by_index.get(index)
