@@ -1839,10 +1839,6 @@ def build_event_conversation_prompt(
             "to mention it explicitly."
         )
 
-    zone_flavor = get_zone_flavor(zone_id)
-    if is_rp and zone_flavor:
-        parts.append(f"Zone context: {zone_flavor}")
-
     weather_for_context = (
         current_weather
         if 'weather' not in event_context.lower()

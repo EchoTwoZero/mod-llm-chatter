@@ -830,6 +830,15 @@ def regenerate_missing_identity_tones(
           AND i.trait2 != ''
           AND i.trait3 IS NOT NULL
           AND i.trait3 != ''
+          -- A group join clears the tone and generates a new
+          -- one itself; skip bots it assigned moments ago so
+          -- the two do not generate in parallel.
+          AND NOT EXISTS (
+              SELECT 1 FROM llm_group_bot_traits g
+              WHERE g.bot_guid = i.bot_guid
+                AND g.assigned_at
+                    > NOW() - INTERVAL 2 MINUTE
+          )
         ORDER BY i.created_at DESC, i.bot_guid DESC
         LIMIT %s
     """, (limit,))

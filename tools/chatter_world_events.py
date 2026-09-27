@@ -202,8 +202,13 @@ def _deliver_conversation(
         b['name']: b['guid'] for b in formatted
     }
 
-    current_weather = extra_data.get(
-        'current_weather', 'clear'
+    # A weather event describes the new weather itself; the
+    # stored value is the weather it replaced. Never assume
+    # "clear" when nothing is known.
+    current_weather = (
+        None
+        if str(event.get('event_type', '')).startswith('weather')
+        else extra_data.get('current_weather') or None
     )
     recent_msgs = get_recent_zone_messages(
         db, zone_id

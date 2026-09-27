@@ -1836,8 +1836,10 @@ AMBIENT_CHAT_TOPICS_RP = _AMBIENT_CHAT_TOPICS_SHARED + [
 # fragments as the player walks through the world.  Distinct from
 # AMBIENT_CHAT_TOPICS which are party/group-focused.
 # Keep entries short and concrete so the LLM produces brief replies.
-PROXIMITY_CHAT_TOPICS = [
-    # ── Weather & Nature ────────────────────────────────────────────
+# Sky and weather topics only make sense outdoors; proximity
+# chatter drops them inside instances, where no weather context
+# exists and speakers would each invent their own.
+PROXIMITY_WEATHER_TOPICS = [
     'complaining about the rain',
     'enjoying the sunshine',
     'wondering if a storm is coming',
@@ -1852,6 +1854,16 @@ PROXIMITY_CHAT_TOPICS = [
     'remarking on the autumn leaves',
     'talking about the river rising after rain',
     'mentioning the harvest moon',
+]
+
+# Normal-mode (player voice) counterpart of the weather topics.
+PROXIMITY_PLAYER_WEATHER_TOPICS = [
+    'reacting to the in-game weather or lighting',
+]
+
+PROXIMITY_CHAT_TOPICS = [
+    # ── Weather & Nature ────────────────────────────────────────────
+    *PROXIMITY_WEATHER_TOPICS,
 
     # ── Local News & Rumors ─────────────────────────────────────────
     'sharing a rumor about trouble on the roads',
@@ -2282,7 +2294,7 @@ PROXIMITY_PLAYER_CHAT_TOPICS = [
 
     # Interface, performance, and controls
     'mentioning bags, bank space, or profession errands',
-    'reacting to the in-game weather or lighting',
+    *PROXIMITY_PLAYER_WEATHER_TOPICS,
     'commenting on the music changing in this area',
     'mentioning a brief lag spike without making a scene',
     'asking whether anyone else saw an NPC behave strangely',

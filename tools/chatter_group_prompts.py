@@ -111,6 +111,31 @@ def _speaker_tone(stored_tone, speaker, mode):
     )
 
 
+def _precache_target_rules(mode, fight_ongoing=True):
+    """Shared rules for cached lines that use {target}.
+
+    {target} is filled in later with a creature name, which may
+    be a proper name (Hogger) or a beast, so it is written bare
+    and never gendered. Cached lines play mid-fight, so none may
+    claim the enemy is already dead.
+    """
+    rules = (
+        "- Write {target} bare: never 'the {target}', and "
+        "never guess its gender (use it or its name)\n"
+    )
+    if fight_ongoing:
+        rules += (
+            "- The fight is still on: never say {target} "
+            "has fallen or is dead\n"
+        )
+    if mode == 'roleplay':
+        rules += (
+            "- No game-role jargon (tank, aggro, threat, "
+            "DPS) - say it as a person would\n"
+        )
+    return rules
+
+
 def _precache_mood_line(mood):
     """Render a pre-cache mood label as colour, never tone.
 
@@ -1177,6 +1202,9 @@ def build_combat_reaction_prompt(
         f"- Extremely brief, 3-8 words max\n"
         f"- No quotes, no emojis\n"
         f"- Can mention the enemy by name\n"
+        f"- The fight is only starting: speak to the "
+        f"engagement, never as if the enemy has "
+        f"already fallen\n"
         f"- Reflect your personality traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
@@ -3465,6 +3493,7 @@ def build_precache_combat_pull_prompt(
         "\"Watch out, {target} incoming!\").\n"
         "Rules:\n"
         "- Must include {target} exactly once\n"
+        + _precache_target_rules(mode) +
         "- Reflect your personality\n"
         "- No quotes, no emojis\n"
         "- Put ONLY the spoken words in the "
@@ -3561,6 +3590,7 @@ def build_precache_state_prompt(
             "or \"{target} is breaking free!\").\n"
             "Rules:\n"
             "- Must include {target} exactly once\n"
+            + _precache_target_rules(mode)
         )
     else:
         prompt += (
@@ -3761,7 +3791,8 @@ def build_precache_spell_offensive_prompt(
         "- This is a DAMAGE ability — your tone "
         "must be combative, not healing or "
         "supportive\n"
-        + style_rule +
+        + style_rule
+        + _precache_target_rules(mode) +
         "- Reflect your personality\n"
         "- No quotes, no emojis\n"
         "- Put ONLY the spoken words in the "
@@ -4300,10 +4331,14 @@ def build_player_msg_conversation_prompt(
             + chat_history
         )
 
-    recent = (
-        chat_history.splitlines()[-10:]
-        if chat_history else []
-    )
+    # Only the bots' own spoken lines: not the header, blank
+    # lines, or the player's message the bots must answer.
+    recent = [
+        line.split(': ', 1)[1]
+        for line in (chat_history or '').splitlines()
+        if line.startswith('  ') and ': ' in line
+        and '(player):' not in line
+    ][-10:]
     anti_rep = build_anti_repetition_context(recent)
     if anti_rep:
         parts.append(anti_rep)

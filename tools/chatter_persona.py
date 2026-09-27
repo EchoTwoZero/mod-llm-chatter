@@ -39,7 +39,9 @@ _TONE_CATEGORIES = ('demeanor', 'humor')
 PERSONA_PRIORITY_RULE = (
     "Personality and tone are fixed: they define how {who} speak. "
     "Mood, topic, optional angles and background feelings only "
-    "colour that voice; never let them change who {who} are."
+    "colour that voice; never let them change who {who} are. "
+    "Traits shape how {who} see and say things; they are not "
+    "subjects to name or repeat in every line."
 )
 
 CONVERSATION_EMOTION_RULE = (

@@ -10,6 +10,8 @@ from chatter_constants import (
     EMOTE_NAME_TO_ID,
     PROXIMITY_CHAT_TOPICS,
     PROXIMITY_PLAYER_CHAT_TOPICS,
+    PROXIMITY_PLAYER_WEATHER_TOPICS,
+    PROXIMITY_WEATHER_TOPICS,
     REACTION_TONES,
 )
 from chatter_db import insert_chat_message
@@ -270,14 +272,31 @@ def _apply_speaker_action_policy(
             line['action'] = None
 
 
-def _playerbot_topic(config: Optional[Dict]) -> str:
+_OUTDOOR_ONLY_TOPICS = frozenset(
+    PROXIMITY_WEATHER_TOPICS + PROXIMITY_PLAYER_WEATHER_TOPICS
+)
+
+
+def _pick_topic(pool, extra: Optional[Dict]) -> str:
+    """Random topic from pool; sky and weather topics are left
+    out inside instances, where no weather context exists."""
+    if extra and build_instance_context(extra)['is_instance']:
+        indoor = [t for t in pool if t not in _OUTDOOR_ONLY_TOPICS]
+        if indoor:
+            return random.choice(indoor)
+    return random.choice(pool)
+
+
+def _playerbot_topic(
+    config: Optional[Dict], extra: Optional[Dict] = None,
+) -> str:
     mode = get_chatter_mode(config or {})
     pool = (
         PROXIMITY_CHAT_TOPICS
         if is_roleplay(mode)
         else PROXIMITY_PLAYER_CHAT_TOPICS
     )
-    return random.choice(pool)
+    return _pick_topic(pool, extra)
 
 
 def _describe_fighter(fighter: Dict) -> str:
@@ -864,14 +883,26 @@ def _single_prompt(
     if player_addressed:
         addressable.insert(0, player_name)
     if addressable:
-        lines.append(
-            "Nearby people you may address by name: "
-            + ", ".join(addressable[:5]) + ". "
-            "They are standing here with you right now: speak "
-            "to them, never about them as absent, missing or "
-            "elsewhere. Use their names rather than guessing "
-            "anyone's gender."
-        )
+        names = ", ".join(addressable[:5])
+        if str(speaker.get('disposition') or '').lower() == 'hostile':
+            # To a hostile NPC these are intruders, not friends:
+            # never let a friendly topic seed turn them into
+            # old companions.
+            lines.append(
+                f"Intruders standing nearby: {names}. They are "
+                "strangers and enemies to you; you share no past "
+                "with them. Keep the topic among your own kind, or "
+                "aim a wary, mocking or threatening remark at them. "
+                "Use their names rather than guessing anyone's gender."
+            )
+        else:
+            lines.append(
+                f"Nearby people you may address by name: {names}. "
+                "They are standing here with you right now: speak "
+                "to them, never about them as absent, missing or "
+                "elsewhere. Use their names rather than guessing "
+                "anyone's gender."
+            )
 
     # Use global EmoteChance / ActionChance gates
     return append_json_instruction(
@@ -901,12 +932,12 @@ def _conversation_prompt(
     if fight_topic:
         topic = fight_topic
     elif is_roleplay(mode) or not has_playerbot:
-        topic = random.choice(PROXIMITY_CHAT_TOPICS)
+        topic = _pick_topic(PROXIMITY_CHAT_TOPICS, extra)
     else:
         topic = (
-            "NPC angle: " + random.choice(PROXIMITY_CHAT_TOPICS)
+            "NPC angle: " + _pick_topic(PROXIMITY_CHAT_TOPICS, extra)
             + "; playerbot angle: "
-            + random.choice(PROXIMITY_PLAYER_CHAT_TOPICS)
+            + _pick_topic(PROXIMITY_PLAYER_CHAT_TOPICS, extra)
         )
     max_lines = max(
         2, min(
@@ -1036,9 +1067,9 @@ def _generate_single_line(
         topic
         or _fight_topic(extra, get_chatter_mode(config or {}))
         or (
-            random.choice(PROXIMITY_CHAT_TOPICS)
+            _pick_topic(PROXIMITY_CHAT_TOPICS, extra)
             if speaker.get('is_npc')
-            else _playerbot_topic(config)
+            else _playerbot_topic(config, extra)
         ),
         player_message=player_message,
         last_message=last_message,
