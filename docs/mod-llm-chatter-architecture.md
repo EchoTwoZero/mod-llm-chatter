@@ -1247,6 +1247,14 @@ special bosses. Kill and enter-combat reactions share this classifier, so
 a registered dungeon encounter boss of elite rank counts as a boss on the
 pull as well as on the kill. `OnPlayerCreatureKilledByPet` routes pet and
 totem killing blows through the same kill path, credited to the owner.
+On the bridge side, `GroupChatter.KillBurstWindow` silences further
+non-boss kill reactions for a group for a few seconds after one is
+voiced, so a boss and its rare-flagged escorts produce one kill line, not
+several. Only a voiced reaction starts the window; one still being
+generated blocks others, and a failed one frees its slot.
+`GroupChatter.PullBurstWindow` does the same for pulls: every bot that
+enters combat raises its own `bot_group_combat` event, and only the first
+one in the window speaks for the group.
 
 ### World ownership
 

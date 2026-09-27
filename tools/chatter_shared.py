@@ -22,7 +22,7 @@ from chatter_constants import (
     CLASS_NAMES, RACE_NAMES,
     RACE_SPEECH_PROFILES, CLASS_SPEECH_MODIFIERS,
     CLASS_ROLE_MAP, ROLE_COMBAT_PERSPECTIVES,
-    ZONE_FLAVOR, DUNGEON_FLAVOR,
+    ZONE_FLAVOR, DUNGEON_FLAVOR, OPEN_AIR_INSTANCES,
     ITEM_QUALITY_COLORS, ITEM_QUALITY_NAMES,
     ITEM_CLASS_NAMES, WEAPON_SUBCLASS_NAMES,
     ARMOR_SUBCLASS_NAMES, CLASS_BITMASK,
@@ -1119,6 +1119,15 @@ def get_zone_flavor(zone_id: int) -> Optional[str]:
 def get_dungeon_flavor(map_id: int) -> Optional[str]:
     """Get dungeon/raid flavor text by map ID."""
     return DUNGEON_FLAVOR.get(map_id)
+
+
+def instance_has_sky(map_id: int = 0, map_name: str = '') -> bool:
+    """True when an instance is fought under the open sky, so time
+    of day, season and weather belong in its prompts. Raid events
+    only carry a map name, so either key is accepted."""
+    if map_id and map_id in OPEN_AIR_INSTANCES:
+        return True
+    return bool(map_name) and map_name in OPEN_AIR_INSTANCES.values()
 
 
 def get_group_area(db, group_id: int) -> int:

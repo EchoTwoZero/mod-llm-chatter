@@ -336,28 +336,52 @@ def _resolve_zone_context(db, player_name, extra_data):
     }
 
 
-def _find_online_general_bot(db, bot_name, player_faction):
-    """Guid of an online bot named bot_name in the player's
-    faction, or None."""
-    if not bot_name or not player_faction:
-        return None
+def _add_recent_general_speakers(
+    db, history, bot_guids, bot_names, zone_id, player_faction,
+):
+    """Add recent General speakers missing from the capped zone sample.
+
+    C++ sends at most MaxBotsPerZone candidates, so the bot the player
+    is talking to can be left out, and find_addressed_bot can only
+    resolve names it is given. Every bot speaker in this zone's history
+    (already bounded by ChatHistoryLimit) is checked, and added when it
+    is a playerbot (is_bot history rows; real players never are),
+    online, recorded in this zone, and of the player's faction.
+    Extends the lists in place.
+    """
+    if not player_faction or not zone_id:
+        return
+    known = set(bot_names)
+    wanted = []
+    for row in reversed(history or []):
+        name = row.get('speaker_name') or ''
+        if (row.get('is_bot') and name and name not in known
+                and name not in wanted):
+            wanted.append(name)
+    if not wanted:
+        return
+    placeholders = ', '.join(['%s'] * len(wanted))
     cursor = db.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT guid, race
+    cursor.execute(f"""
+        SELECT guid, name, race
         FROM characters
-        WHERE name = %s AND online = 1
-    """, (bot_name,))
-    row = cursor.fetchone()
+        WHERE name IN ({placeholders})
+          AND online = 1
+          AND zone = %s
+    """, (*wanted, zone_id))
+    rows = cursor.fetchall()
     cursor.close()
-    if not row or get_race_faction(row.get('race')) != player_faction:
-        return None
-    return int(row['guid'])
+    for row in rows:
+        if get_race_faction(row.get('race')) != player_faction:
+            continue
+        bot_guids.append(int(row['guid']))
+        bot_names.append(row['name'])
 
 
 def _select_primary_bot(
     db, client, config, bot_guids, bot_names,
     player_name, player_message, mode,
-    chat_hist="", player_faction=None,
+    chat_hist="",
 ):
     """Pick the primary bot for a General reaction.
 
@@ -402,18 +426,6 @@ def _select_primary_bot(
             if name == addressed:
                 bot1_idx = i
                 break
-    if addressed and bot1_idx is None:
-        # The zone sample is capped (MaxBotsPerZone), so the
-        # bot the player is talking to can be left out of it.
-        # Keep the conversation with them instead of handing
-        # the reply to a random stranger.
-        guid = _find_online_general_bot(
-            db, addressed, player_faction,
-        )
-        if guid:
-            bot_guids.append(guid)
-            bot_names.append(addressed)
-            bot1_idx = len(bot_guids) - 1
     if bot1_idx is None:
         bot1_idx = random.randint(
             0, len(bot_guids) - 1
@@ -582,7 +594,8 @@ def _build_general_response_prompt(
         f"as plain text\n"
         f"- Respond to what {player_name} said\n"
         f"{address_hint}"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat what they said\n"
         f"- If there's chat history, stay "
         f"consistent with the conversation\n"
@@ -730,7 +743,8 @@ def _build_general_followup_prompt(
         f"- Don't repeat what others said\n"
         f"{address_hint}"
         f"- Keep it brief - General channel\n"
-        f"- Reflect your personality traits"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits"
     )
     spice_line = format_spices_line(
         maybe_pick_personality_spices(mode)
@@ -847,6 +861,10 @@ def process_general_player_msg_event(
             db, zone_id, faction=player_faction
         )
         chat_hist = _format_general_history(history)
+        _add_recent_general_speakers(
+            db, history, bot_guids, bot_names,
+            zone_id, player_faction,
+        )
 
         # Pick primary bot and decide conv vs stmt
         primary = _select_primary_bot(
@@ -854,7 +872,6 @@ def process_general_player_msg_event(
             bot_names, player_name,
             player_message, mode,
             chat_hist=chat_hist,
-            player_faction=player_faction,
         )
         if not primary:
             mark_event(db, event_id, 'skipped')
@@ -1472,7 +1489,8 @@ def _build_general_continuation_prompt(
         f"- Don't repeat what others said\n"
         f"{address_hint}"
         f"- Keep it brief - General channel\n"
-        f"- Reflect your personality traits"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits"
     )
     if remaining_messages <= 2:
         prompt += (

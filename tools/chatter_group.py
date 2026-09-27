@@ -46,6 +46,7 @@ from chatter_shared import (
     format_location_label,
     pick_random_max_tokens,
     get_dungeon_flavor, get_dungeon_bosses,
+    instance_has_sky,
     parse_conversation_response,
     count_conversation_items,
     calculate_dynamic_delay,
@@ -3184,7 +3185,8 @@ def build_idle_chatter_prompt(
     weather_arg = (
         None if in_dungeon else current_weather
     )
-    if is_rp:
+    sky = not in_dungeon or instance_has_sky(map_id)
+    if is_rp and sky:
         for line in build_environmental_context_lines(
             weather_arg
         ):
@@ -3290,7 +3292,8 @@ def build_idle_chatter_prompt(
         f"{_pick_length_hint(mode)}\n"
         f"Rules:\n"
         f"- No quotes, no emojis\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Just a natural idle comment\n"
         f"{repeat_rule}"
         f"- NEVER claim to have killed a creature, "
@@ -3620,7 +3623,8 @@ def build_idle_conversation_prompt(
     weather_arg = (
         None if in_dungeon else current_weather
     )
-    if is_rp:
+    sky = not in_dungeon or instance_has_sky(map_id)
+    if is_rp and sky:
         parts.extend(
             build_environmental_context_lines(weather_arg)
         )

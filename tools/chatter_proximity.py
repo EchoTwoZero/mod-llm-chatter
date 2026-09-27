@@ -22,6 +22,7 @@ from chatter_instance_context import (
     build_location_prompt_lines,
 )
 from chatter_shared import (
+    instance_has_sky,
     PromptParts,
     append_json_instruction,
     append_conversation_json_instruction,
@@ -503,16 +504,22 @@ def _player_context_line(db, extra: Dict) -> str:
 
 
 def _environment_lines(db, extra: Dict, is_instance: bool) -> List[str]:
-    """Time of day, season and live weather for the open world.
-    Indoors (instances) none of it is visible, so it is skipped."""
-    if is_instance:
+    """Time of day, season and live weather under the open sky.
+
+    Indoor instances get none of it. Open-air instances
+    (OPEN_AIR_INSTANCES) keep time and season but never weather, like
+    the party builders: the game has no live weather inside instances.
+    """
+    if is_instance and not instance_has_sky(
+        int(extra.get('map_id', 0) or 0)
+    ):
         return []
-    # Lazy import: chatter_group is a large module and the
-    # weather helper is the only thing needed from it.
-    from chatter_group import get_recent_weather
     zone_id = int(extra.get('zone_id', 0) or 0)
     weather = None
-    if db and zone_id:
+    if db and zone_id and not is_instance:
+        # Lazy import: chatter_group is a large module and the
+        # weather helper is the only thing needed from it.
+        from chatter_group import get_recent_weather
         try:
             weather = get_recent_weather(db, zone_id)
         except Exception:

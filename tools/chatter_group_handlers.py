@@ -3,6 +3,8 @@
 import logging
 import random
 import re
+import threading
+import time
 from chatter_shared import (
     parse_extra_data,
     get_class_name,
@@ -259,6 +261,73 @@ def _kill_post_success(db, ctx, message):
             )
 
 
+_burst_lock = threading.Lock()
+# (kind, group_id) -> time of the last reaction that was voiced.
+_burst_voiced_at = {}
+# (kind, group_id) -> tokens of reactions currently being generated.
+_burst_inflight = {}
+
+
+def _burst_reserve(kind, config, extra_data, window_key,
+                   default_window, boss_passes):
+    """Reserve a slot for a group `kind` reaction, or return None when
+    it should stay silent.
+
+    One fight often raises the same event several times at once: a
+    boss dies with rare-flagged escorts, or every bot enters combat on
+    the same pull. Without a group-level guard each produces its own
+    near-identical line and the moment gets buried.
+
+    A reaction is suppressed while another one for the group is being
+    generated, or when one was voiced less than the window ago. With
+    `boss_passes`, boss events always get a slot. _burst_finish()
+    starts the window only for a voiced reaction; a failed one just
+    gives its slot back, so it never silences the next.
+
+    Returns None when suppressed, () when no guard applies (no group,
+    or window <= 0), else a reservation for commit/release.
+    """
+    group_id = int(extra_data.get('group_id', 0) or 0)
+    try:
+        window = int(config.get(window_key, default_window))
+    except (TypeError, ValueError):
+        window = default_window
+    if not group_id or window <= 0:
+        return ()
+    is_boss = bool(int(extra_data.get('is_boss', 0) or 0))
+    key = (kind, group_id)
+    token = object()
+    now = time.time()
+    with _burst_lock:
+        if not (boss_passes and is_boss):
+            if _burst_inflight.get(key):
+                return None
+            if now - _burst_voiced_at.get(key, 0) < window:
+                return None
+        _burst_inflight.setdefault(key, set()).add(token)
+        if len(_burst_voiced_at) > 1000:
+            cutoff = now - 600
+            for k in [k for k, at in _burst_voiced_at.items()
+                      if at < cutoff]:
+                del _burst_voiced_at[k]
+    return (key, token)
+
+
+def _burst_finish(reservation, voiced):
+    """End a reservation; start the group window only if it voiced."""
+    if not reservation:
+        return
+    key, token = reservation
+    with _burst_lock:
+        tokens = _burst_inflight.get(key)
+        if tokens is not None:
+            tokens.discard(token)
+            if not tokens:
+                del _burst_inflight[key]
+        if voiced:
+            _burst_voiced_at[key] = time.time()
+
+
 def process_group_kill_event(
     db, client, config, event
 ):
@@ -267,8 +336,32 @@ def process_group_kill_event(
     The killing bot reacts to a boss/rare kill
     in party chat.
     """
+    extra_data = parse_extra_data(
+        event.get('extra_data'), event['id'],
+        'bot_group_kill',
+    )
+    reservation = ()
+    if extra_data:
+        reservation = _burst_reserve(
+            'kill', config, extra_data,
+            'LLMChatter.GroupChatter.KillBurstWindow', 30,
+            boss_passes=True,
+        )
+        if reservation is None:
+            _mark_event(db, event['id'], 'skipped')
+            return False
+    ok = False
+    try:
+        ok = _run_kill_reaction(db, client, config, event, extra_data)
+        return ok
+    finally:
+        _burst_finish(reservation, bool(ok))
+
+
+def _run_kill_reaction(db, client, config, event, extra_data):
     return run_group_handler(
         db, client, config, event,
+        pre_parsed_extra=extra_data,
         event_type_label='bot_group_kill',
         extract_fields=lambda ed: {
             'creature_name': ed.get(
@@ -505,37 +598,53 @@ def process_group_combat_event(
         ):
             _mark_event(db, event_id, 'skipped')
             return False
+        # Every bot entering combat on one pull raises its own
+        # event; only the first speaks for the group.
+        reservation = _burst_reserve(
+            'pull', config, ed,
+            'LLMChatter.GroupChatter.PullBurstWindow', 15,
+            boss_passes=False,
+        )
+        if reservation is None:
+            _mark_event(db, event_id, 'skipped')
+            return False
+    else:
+        reservation = ()
 
-    result = run_group_handler(
-        db, client, config, event,
-        event_type_label='bot_group_combat',
-        extract_fields=lambda ed: {
-            'creature_name': ed.get(
-                'creature_name', 'something'),
-            'is_boss': bool(int(
-                ed.get('is_boss', 0))),
-            'is_elite': bool(int(
-                ed.get('is_elite', 0))),
-        },
-        build_prompt=lambda ctx: (
-            build_combat_reaction_prompt(
-                ctx['bot'], ctx['traits'],
-                ctx['creature_name'],
-                ctx['is_boss'], ctx['mode'],
-                chat_history=ctx['chat_hist'],
-                is_elite=ctx['is_elite'],
-                extra_data=ctx['extra_data'],
-                speaker_talent_context=(
-                    ctx['speaker_talent']),
-                stored_tone=ctx['stored_tone'],
-            )
-        ),
-        delay_seconds=1,
-        max_tokens_override=60,
-        inject_mood=False,
-        label='reaction_combat',
-        bg_fallback_prompt=build_bg_combat_prompt,
-    )
+    result = False
+    try:
+        result = run_group_handler(
+            db, client, config, event,
+            event_type_label='bot_group_combat',
+            extract_fields=lambda ed: {
+                'creature_name': ed.get(
+                    'creature_name', 'something'),
+                'is_boss': bool(int(
+                    ed.get('is_boss', 0))),
+                'is_elite': bool(int(
+                    ed.get('is_elite', 0))),
+            },
+            build_prompt=lambda ctx: (
+                build_combat_reaction_prompt(
+                    ctx['bot'], ctx['traits'],
+                    ctx['creature_name'],
+                    ctx['is_boss'], ctx['mode'],
+                    chat_history=ctx['chat_hist'],
+                    is_elite=ctx['is_elite'],
+                    extra_data=ctx['extra_data'],
+                    speaker_talent_context=(
+                        ctx['speaker_talent']),
+                    stored_tone=ctx['stored_tone'],
+                )
+            ),
+            delay_seconds=1,
+            max_tokens_override=60,
+            inject_mood=False,
+            label='reaction_combat',
+            bg_fallback_prompt=build_bg_combat_prompt,
+        )
+    finally:
+        _burst_finish(reservation, bool(result))
 
     # Attempt raid battle cry regardless of whether
     # the party reaction succeeded — the reactor bot
@@ -1879,7 +1988,14 @@ def process_group_quest_accept_batch_event(
 
 
 def _race_class_of(db, guid, name):
-    """'Dwarf Priest' for a character guid, or ''."""
+    """'Dwarf Priest' for a character, or ''.
+
+    Level-up events name the leveler but carry no guid for it, so
+    the name is the fallback key.
+    """
+    if not guid and name:
+        found = get_character_info_by_name(db, name)
+        guid = found['guid'] if found else 0
     if not guid:
         return ''
     info = _build_bot_from_db(db, guid, name)

@@ -1521,6 +1521,27 @@ LLMChatter.GroupChatter.KillChanceNormal = 20
 LLMChatter.GroupChatter.KillCooldown = 120
 
 #
+#   LLMChatter.GroupChatter.KillBurstWindow [BRIDGE]
+#       Seconds after a kill reaction during which further non-boss
+#       kills in the same group stay silent. Stops a boss and its
+#       rare-flagged escorts from producing several near-identical
+#       lines in one fight. Boss kills always react and restart the
+#       window. 0 disables the guard.
+#       Default: 30
+#
+LLMChatter.GroupChatter.KillBurstWindow = 30
+
+#
+#   LLMChatter.GroupChatter.PullBurstWindow [BRIDGE]
+#       Seconds during which only one pull (battle cry) reaction is
+#       voiced per group. Every bot entering combat on the same pull
+#       raises its own event; the first speaks, the rest stay quiet.
+#       0 disables the guard.
+#       Default: 15
+#
+LLMChatter.GroupChatter.PullBurstWindow = 15
+
+#
 #   LLMChatter.GroupChatter.DeathChance
 #       Percent chance (0-100) that a bot death
 #       triggers a group reaction.

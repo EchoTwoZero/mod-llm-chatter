@@ -1359,6 +1359,35 @@ RAID_MAP_IDS = {
     533, 603, 615, 616, 624, 631, 649, 724,
 }
 
+# =============================================================================
+# OPEN-AIR INSTANCES - dungeons and raids fought under the open sky
+# =============================================================================
+# Only these get time of day, season and weather in prompts; every
+# other instance is indoors (prisons, caves, crypts, keeps), where the
+# sky is not visible. Keyed by map ID; the value is the DBC map name,
+# which raid events carry instead of a map ID. Mixed instances that are
+# mostly indoors (Deadmines, Scarlet Monastery, Ulduar, ICC...) are left
+# out on purpose.
+OPEN_AIR_INSTANCES = {
+    47: "Razorfen Kraul",
+    129: "Razorfen Downs",
+    209: "Zul'Farrak",
+    329: "Stratholme",
+    543: "Hellfire Ramparts",
+    560: "Old Hillsbrad Foothills",
+    269: "The Black Morass",
+    578: "The Oculus",
+    595: "The Culling of Stratholme",
+    650: "Trial of the Champion",
+    658: "Pit of Saron",
+    309: "Zul'Gurub",
+    509: "Ruins of Ahn'Qiraj",
+    534: "Battle for Mount Hyjal",
+    568: "Zul'Aman",
+    649: "Trial of the Crusader",
+}
+
+# =============================================================================
 # DUNGEON FLAVOR - Rich context for immersive dungeon/raid chat generation
 # =============================================================================
 # Each dungeon/raid gets a description that gives the LLM world knowledge.

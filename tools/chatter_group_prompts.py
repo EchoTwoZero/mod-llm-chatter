@@ -8,6 +8,7 @@ from chatter_shared import (
     get_zone_name,
     get_subzone_lore,
     get_dungeon_flavor,
+    instance_has_sky,
     get_dungeon_bosses,
     build_race_class_context,
     build_race_class_context_parts,
@@ -377,7 +378,9 @@ def build_bot_greeting_prompt(
         f"{location_context}\n"
         + "\n".join(
             build_environmental_context_lines()
-            if is_rp else []
+            if is_rp and (
+                not dungeon_flav or instance_has_sky(map_id)
+            ) else []
         )
         + "\n"
     )
@@ -947,7 +950,8 @@ def build_kill_reaction_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"{_enemy_name_rule(pvp, pvp_named, 'creature')}"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -1085,7 +1089,8 @@ def build_loot_reaction_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Can mention the item by name\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat\n"
         f"- NEVER say the item will serve YOU "
@@ -1205,7 +1210,8 @@ def build_combat_reaction_prompt(
         f"- The fight is only starting: speak to the "
         f"engagement, never as if the enemy has "
         f"already fallen\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -1324,7 +1330,8 @@ def build_death_reaction_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Mention {dead_name} by name\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -1409,7 +1416,8 @@ def build_levelup_reaction_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Can mention level {new_level}\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -1516,7 +1524,8 @@ def build_quest_complete_reaction_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Can mention the quest by name\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -1621,7 +1630,8 @@ def build_quest_objectives_reaction_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Can mention the quest by name\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't attribute the completion to "
         f"any specific player — it was a group "
         f"effort\n"
@@ -1747,7 +1757,8 @@ def build_achievement_reaction_prompt(
             f"yours — congratulate them\n"
         )
     prompt += (
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -1838,7 +1849,8 @@ def build_group_achievement_reaction_prompt(
         f"- Can mention the achievement by name\n"
         f"- You may mention a few names but don't "
         f"list everyone\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -2154,7 +2166,8 @@ def build_spell_cast_reaction_prompt(
         f"- Short reaction, one sentence only\n"
         f"- No quotes around your message\n"
         f"- No emojis\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
         f"{anti_rep_block}"
@@ -2386,7 +2399,8 @@ def build_player_response_prompt(
         f"- No quotes, no emojis\n"
         f"- Respond to what {player_name} said\n"
         f"{address_hint}"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat what they said\n"
         f"- If there's chat history, stay "
         f"consistent with the conversation\n"
@@ -2474,7 +2488,8 @@ def build_resurrect_reaction_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Express gratitude, relief, or drama\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -2604,7 +2619,8 @@ def build_zone_transition_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Can mention {location_name} by name\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -2735,7 +2751,8 @@ def build_quest_accept_reaction_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Can mention the quest by name\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -2833,7 +2850,8 @@ def build_quest_accept_batch_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Can mention one quest name at most\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -2948,7 +2966,8 @@ def build_dungeon_entry_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Can mention {map_name} by name\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -3055,7 +3074,8 @@ def build_wipe_reaction_prompt(
             f"- Can reference {killer_name}\n"
         )
     prompt += (
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -3180,7 +3200,8 @@ def build_corpse_run_reaction_prompt(
         f"{_pick_length_hint(mode)}\n"
         f"Rules:\n"
         f"- No quotes, no emojis\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -3262,7 +3283,8 @@ def build_low_health_callout_prompt(
         f"Rules:\n"
         f"- Extremely brief, 3-10 words\n"
         f"- No quotes, no emojis\n"
-        f"- Reflect your personality traits"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits"
     )
     return append_json_instruction(
         prompt, allow_action
@@ -3339,7 +3361,8 @@ def build_oom_callout_prompt(
         f"Rules:\n"
         f"- Extremely brief, 3-10 words\n"
         f"- No quotes, no emojis\n"
-        f"- Reflect your personality traits"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits"
     )
     return append_json_instruction(
         prompt, allow_action
@@ -3439,7 +3462,8 @@ def build_aggro_loss_callout_prompt(
         f"- Extremely brief, 3-10 words\n"
         f"- No quotes, no emojis\n"
         f"{names}"
-        f"- Reflect your personality traits"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits"
     )
     return append_json_instruction(
         prompt, allow_action
@@ -3494,7 +3518,8 @@ def build_precache_combat_pull_prompt(
         "Rules:\n"
         "- Must include {target} exactly once\n"
         + _precache_target_rules(mode) +
-        "- Reflect your personality\n"
+        "- Let your personality show in how you say it, "
+        "without naming your traits\n"
         "- No quotes, no emojis\n"
         "- Put ONLY the spoken words in the "
         "\"message\" JSON field"
@@ -3601,7 +3626,8 @@ def build_precache_state_prompt(
         )
 
     prompt += (
-        "- Reflect your personality\n"
+        "- Let your personality show in how you say it, "
+        "without naming your traits\n"
         "- No quotes, no emojis\n"
         "- Put ONLY the spoken words in the "
         "\"message\" JSON field"
@@ -3673,7 +3699,8 @@ def build_precache_spell_support_prompt(
         "(with curly braces)\n"
         "- Do NOT invent spell names — use {spell} "
         "for the spell name\n"
-        "- Reflect your personality\n"
+        "- Let your personality show in how you say it, "
+        "without naming your traits\n"
         "- No quotes, no emojis\n"
         "- Put ONLY the spoken words in the "
         "\"message\" JSON field"
@@ -3793,7 +3820,8 @@ def build_precache_spell_offensive_prompt(
         "supportive\n"
         + style_rule
         + _precache_target_rules(mode) +
-        "- Reflect your personality\n"
+        "- Let your personality show in how you say it, "
+        "without naming your traits\n"
         "- No quotes, no emojis\n"
         "- Put ONLY the spoken words in the "
         "\"message\" JSON field"
@@ -4812,7 +4840,8 @@ def build_bot_question_prompt(
     weather_arg = (
         None if in_dungeon else current_weather
     )
-    if is_rp:
+    sky = not in_dungeon or instance_has_sky(map_id)
+    if is_rp and sky:
         for line in build_environmental_context_lines(
             weather_arg
         ):

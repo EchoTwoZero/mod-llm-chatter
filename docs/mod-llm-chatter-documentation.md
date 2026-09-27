@@ -2524,8 +2524,12 @@ plus their race (from the display model's `CreatureDisplayInfoExtra`
 entry, named through `ChrRaces`, so non-playable races resolve too) and
 faction affiliation (faction template to `Faction.dbc` name). Every
 proximity prompt also describes the nearby real player (level, gender,
-race, class) and, in the open world only, the time of day with
-opportunistic season and live zone weather.
+race, class) and, under the open sky only, the time of day with
+opportunistic season and live zone weather. `OPEN_AIR_INSTANCES` in
+`chatter_constants.py` lists the dungeons and raids fought outdoors
+(Razorfen Kraul, Zul'Farrak, Stratholme, Zul'Gurub...); party, raid and
+proximity prompts all skip time and weather in every other instance
+through `instance_has_sky()`.
 Curated non-humanoids additionally carry creature type and their
 qualification reason so the model knows that the individual can speak
 without generalizing that ability to its whole species.
