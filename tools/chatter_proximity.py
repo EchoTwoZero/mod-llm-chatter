@@ -36,6 +36,7 @@ from chatter_shared import (
     get_race_name,
     strip_conversation_actions,
 )
+from chatter_prompts import build_environmental_context_lines
 from chatter_mode import (
     build_npc_chat_guidance,
     build_player_chat_guidance,
@@ -207,6 +208,12 @@ def _describe_speaker(
         gender = speaker.get('gender') or ''
         if gender:
             parts.append(f"gender: {gender}")
+        race = speaker.get('race') or ''
+        if race:
+            parts.append(f"race: {race}")
+        faction = speaker.get('faction') or ''
+        if faction:
+            parts.append(f"affiliation: {faction}")
         disposition = speaker.get('disposition') or ''
         rank = speaker.get('rank') or ''
         creature_type = speaker.get('creature_type') or ''
@@ -454,13 +461,58 @@ def _npc_speech_capability_guidance(speaker: Dict) -> str:
     )
 
 
+def _player_context_line(db, extra: Dict) -> str:
+    """Who the nearby real player is, so speakers can react to
+    them as a person rather than a bare name."""
+    player_guid = int(extra.get('player_guid', 0) or 0)
+    player_name = extra.get('player_name') or ''
+    if not db or not player_guid or not player_name:
+        return ''
+    info = _query_bot_identity(db, player_guid)
+    if not info:
+        return ''
+    desc = ' '.join(
+        part for part in (
+            info.get('gender', ''),
+            info.get('race', ''),
+            info.get('class', ''),
+        ) if part
+    )
+    level = info.get('level') or 0
+    level_text = f"level {level} " if level else ''
+    return f"The player {player_name} is a {level_text}{desc}."
+
+
+def _environment_lines(db, extra: Dict, is_instance: bool) -> List[str]:
+    """Time of day, season and live weather for the open world.
+    Indoors (instances) none of it is visible, so it is skipped."""
+    if is_instance:
+        return []
+    # Lazy import: chatter_group is a large module and the
+    # weather helper is the only thing needed from it.
+    from chatter_group import get_recent_weather
+    zone_id = int(extra.get('zone_id', 0) or 0)
+    weather = None
+    if db and zone_id:
+        try:
+            weather = get_recent_weather(db, zone_id)
+        except Exception:
+            logger.error("proximity weather lookup failed", exc_info=True)
+    return build_environmental_context_lines(weather)
+
+
 def _location_lines(
     extra: Dict,
     mode: str,
     speakers: List[Dict],
+    db=None,
 ) -> List[str]:
     lines = build_location_prompt_lines(extra)
     context = build_instance_context(extra)
+    lines.extend(_environment_lines(db, extra, context['is_instance']))
+    player_line = _player_context_line(db, extra)
+    if player_line:
+        lines.append(player_line)
     has_normal_playerbot = (
         not is_roleplay(mode)
         and any(
@@ -759,7 +811,7 @@ def _single_prompt(
         f"Speaker: {speaker_desc}",
     ])
     lines.extend(_location_lines(
-        extra, mode, [speaker]
+        extra, mode, [speaker], db=db,
     ))
     disposition_guidance = _npc_disposition_guidance(
         speaker
@@ -814,7 +866,11 @@ def _single_prompt(
     if addressable:
         lines.append(
             "Nearby people you may address by name: "
-            + ", ".join(addressable[:5]) + "."
+            + ", ".join(addressable[:5]) + ". "
+            "They are standing here with you right now: speak "
+            "to them, never about them as absent, missing or "
+            "elsewhere. Use their names rather than guessing "
+            "anyone's gender."
         )
 
     # Use global EmoteChance / ActionChance gates
@@ -928,7 +984,7 @@ def _conversation_prompt(
         "Speakers may address each other by name.",
     ]
     lines.extend(_location_lines(
-        extra, mode, participants
+        extra, mode, participants, db=db,
     ))
     lines.extend(_mixed_voice_guidance(mode))
 
@@ -1478,7 +1534,7 @@ def _player_say_single_prompt(
         f"Speaker: {speaker_desc}",
     ])
     lines.extend(_location_lines(
-        extra, mode, [speaker]
+        extra, mode, [speaker], db=db,
     ))
     disposition_guidance = _npc_disposition_guidance(
         speaker
@@ -1569,7 +1625,7 @@ def _player_say_conversation_prompt(
         "",
     ]
     lines.extend(_location_lines(
-        extra, mode, participants
+        extra, mode, participants, db=db,
     ))
     lines.extend(_mixed_voice_guidance(mode))
 
@@ -1700,7 +1756,7 @@ def _player_emote_single_prompt(
             "Write an extremely short /say reaction of 2-8 words.",
             "Keep it natural and low-stakes. No AI talk or markdown.",
         ]
-    lines.extend(_location_lines(extra, mode, [speaker]))
+    lines.extend(_location_lines(extra, mode, [speaker], db=db))
     if speaker_is_npc:
         disposition = _npc_disposition_guidance(speaker)
         if disposition:
@@ -1787,7 +1843,7 @@ def _player_emote_conversation_prompt(
         "Never invent dialogue, thoughts, or actions for the real player.",
         "",
     ]
-    lines.extend(_location_lines(extra, mode, participants))
+    lines.extend(_location_lines(extra, mode, participants, db=db))
     lines.extend(_mixed_voice_guidance(mode))
     lines.extend([
         f"The player ({player_name}) "

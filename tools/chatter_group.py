@@ -105,6 +105,7 @@ from chatter_persona import (
     build_cast_lines,
     build_persona_block,
     fallback_tone,
+    party_reaction_backstory,
     persona_from_fields,
     without_backstory,
 )
@@ -1702,6 +1703,7 @@ def process_group_player_msg_event(
     cursor.execute("""
         SELECT t.bot_guid, t.bot_name,
                t.trait1, t.trait2, t.trait3, t.tone,
+               t.backstory,
                t.travel_mode, t.travel_context,
                t.is_mounted, t.is_flying,
                t.is_taxi_flying, t.is_on_transport,
@@ -1897,6 +1899,7 @@ def process_group_player_msg_event(
                 'trait2': bot_row['trait2'],
                 'trait3': bot_row['trait3'],
                 'tone': stored_tone,
+                'backstory': bot_row.get('backstory'),
                 'travel_mode': travel_state.get('mode') or '',
                 'travel_context': travel_context,
                 'travel_state': travel_state,
@@ -2005,6 +2008,9 @@ def process_group_player_msg_event(
             allow_action=not brief_casual,
             thread_context=render_for_player_reply(
                 group_id, db
+            ),
+            backstory=party_reaction_backstory(
+                config, bot_row.get('backstory'), mode,
             ),
         )
 
@@ -2408,6 +2414,9 @@ def _try_second_bot_response(
         stored_tone=bot2_tone,
         travel_context=bot2_travel_context,
         thread_context=render_for_player_reply(group_id, db),
+        backstory=party_reaction_backstory(
+            config, second.get('backstory'), mode,
+        ),
     )
 
     max_tokens = int(config.get(

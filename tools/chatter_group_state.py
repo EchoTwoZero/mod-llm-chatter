@@ -1334,6 +1334,7 @@ def get_other_group_bot(db, group_id, exclude_guid):
     cursor.execute("""
         SELECT bot_guid, bot_name,
                trait1, trait2, trait3, role, tone,
+               backstory,
                travel_mode, travel_context,
                is_mounted, is_flying,
                is_taxi_flying, is_on_transport,
@@ -1355,6 +1356,7 @@ def get_other_group_bot(db, group_id, exclude_guid):
             ],
             'role': row.get('role'),
             'tone': row.get('tone'),
+            'backstory': row.get('backstory'),
             'travel_mode': travel_state.get('mode') or '',
             'travel_context': format_travel_context(
                 travel_state),

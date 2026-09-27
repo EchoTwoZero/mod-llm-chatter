@@ -33,6 +33,7 @@ from chatter_prompts import (
 from chatter_persona import (
     build_cast_lines,
     fallback_tone,
+    format_backstory_block,
     format_mood_line,
     persona_from_fields,
 )
@@ -1309,9 +1310,12 @@ def build_levelup_reaction_prompt(
     mode, chat_history="", allow_action=True,
     speaker_talent_context=None,
     stored_tone=None,
+    leveler_desc="",
 ):
     """Build prompt for a bot reacting to someone
     leveling up. Always congratulatory/excited.
+    leveler_desc ("Dwarf Priest") keeps the speaker from
+    guessing the leveler's race or class.
     If is_bot=True, reacting to another bot.
     If is_bot=False, reacting to the real player.
     """
@@ -1335,6 +1339,8 @@ def build_levelup_reaction_prompt(
     who = leveler_name
     if not is_bot:
         who = f"{leveler_name} (the real player)"
+    if leveler_desc:
+        who = f"{who}, a {leveler_desc},"
 
     levelup_context = (
         f"{who} just reached level {new_level}! "
@@ -2142,10 +2148,15 @@ def build_player_response_prompt(
     travel_context="",
     brief_casual=False,
     thread_context="",
+    backstory="",
 ):
     """Build prompt for a bot responding to a real
     player's party chat message. The bot should
     reply naturally and contextually.
+
+    backstory: already-gated backstory text
+    (chatter_persona.party_reaction_backstory);
+    roleplay only, skipped for brief casual replies.
 
     thread_context: read-only conversation-thread note
     (chatter_threads.render_for_player_reply); skipped
@@ -2164,6 +2175,12 @@ def build_player_response_prompt(
         )
         if ctx:
             rp_context = f"\n{ctx}"
+        backstory_block = (
+            format_backstory_block(backstory, mode)
+            if not brief_casual else ''
+        )
+        if backstory_block:
+            rp_context += f"\n{backstory_block}"
 
         profile = RACE_SPEECH_PROFILES.get(
             bot['race']

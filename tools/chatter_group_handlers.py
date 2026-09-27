@@ -66,6 +66,10 @@ from chatter_group_state import (
     update_bot_mood,
 )
 from chatter_threads import render_for_player_reply
+from chatter_persona import (
+    format_backstory_block,
+    party_reaction_backstory,
+)
 from chatter_group_prompts import (
     build_kill_reaction_prompt,
     build_loot_reaction_prompt,
@@ -102,6 +106,7 @@ from chatter_raid_prompts import (
 )
 from chatter_handler_pipeline import (
     run_group_handler,
+    _build_bot_from_db,
     _maybe_talent_context,
 )
 from chatter_memory import queue_memory
@@ -690,6 +695,9 @@ def process_group_levelup_event(
                 ctx['new_level'],
                 ctx['is_bot'],
                 ctx['mode'],
+                leveler_desc=_race_class_of(
+                    ctx['db'], ctx['leveler_guid'],
+                    ctx['leveler_name']),
                 chat_history=ctx['chat_hist'],
                 speaker_talent_context=(
                     ctx['speaker_talent']),
@@ -1580,6 +1588,15 @@ def process_group_zone_transition_event(
             player_name=player_name,
             solo_bot=solo_bot,
         )
+        # Backstory (roleplay only, config-gated), as in
+        # the shared reaction pipeline.
+        zt_backstory = party_reaction_backstory(
+            config, trait_data.get('backstory'), mode,
+        )
+        if zt_backstory:
+            prompt += (
+                f"\n{format_backstory_block(zt_backstory, mode)}"
+            )
 
         # Use raid chat in raid instances so all
         # sub-groups see the message
@@ -1861,16 +1878,55 @@ def process_group_quest_accept_batch_event(
     )
 
 
+def _race_class_of(db, guid, name):
+    """'Dwarf Priest' for a character guid, or ''."""
+    if not guid:
+        return ''
+    info = _build_bot_from_db(db, guid, name)
+    if not info:
+        return ''
+    return f"{info['race']} {info['class']}"
+
+
+def _pick_group_speaker(db, group_id):
+    """A random bot (bot_guid, bot_name) of the group, or None."""
+    if not group_id:
+        return None
+    cursor = db.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT bot_guid, bot_name FROM llm_group_bot_traits "
+        "WHERE group_id = %s",
+        (group_id,),
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    return random.choice(rows) if rows else None
+
+
 def process_group_dungeon_entry_event(
     db, client, config, event
 ):
     """Handle a bot_group_dungeon_entry event.
 
-    The bot that entered a dungeon or raid instance
-    reacts in party chat.
+    A bot in the group reacts in party chat when the
+    real player enters a dungeon or raid instance.
     """
+    extra_data = parse_extra_data(
+        event.get('extra_data'), event['id'],
+        'bot_group_dungeon_entry',
+    )
+    # C++ queues this on the player's entry and names no
+    # speaker, so pick one of the group's bots.
+    if extra_data and not extra_data.get('bot_guid'):
+        speaker = _pick_group_speaker(
+            db, int(extra_data.get('group_id', 0) or 0),
+        )
+        if speaker:
+            extra_data['bot_guid'] = speaker['bot_guid']
+            extra_data['bot_name'] = speaker['bot_name']
     return run_group_handler(
         db, client, config, event,
+        pre_parsed_extra=extra_data,
         event_type_label='bot_group_dungeon_entry',
         extract_fields=lambda ed: {
             'dungeon_map_id': int(
@@ -2326,7 +2382,7 @@ def _nearby_object_conversation(
         cursor = db.cursor(dictionary=True)
         cursor.execute("""
             SELECT bot_guid, trait1, trait2, trait3,
-                   tone
+                   tone, backstory
             FROM llm_group_bot_traits
             WHERE group_id = %s
                 AND bot_name = %s
@@ -2353,6 +2409,7 @@ def _nearby_object_conversation(
             'name': name,
             'guid': guid,
             'tone': row.get('tone'),
+            'backstory': row.get('backstory'),
             'class': get_class_name(
                 char['class']
             ),
@@ -2366,6 +2423,7 @@ def _nearby_object_conversation(
         _mark_event(db, event_id, 'skipped')
         return False
 
+    _gate_conversation_backstories(bots, config, mode)
     attach_speaker_gear(db, bots, config)
 
     bot_names = [b['name'] for b in bots]
@@ -2599,6 +2657,7 @@ def execute_player_msg_conversation(
             'name': name,
             'guid': guid,
             'tone': row.get('tone'),
+            'backstory': row.get('backstory'),
             'class': get_class_name(
                 char['class']
             ),
@@ -2613,6 +2672,9 @@ def execute_player_msg_conversation(
     if len(bots) < 2:
         return False
 
+    _gate_conversation_backstories(
+        bots, config, mode, skip=brief_casual,
+    )
     attach_speaker_gear(db, bots, config)
 
     bot_names = [b['name'] for b in bots]
@@ -2819,6 +2881,17 @@ def execute_player_msg_conversation(
 # QUEST CONVERSATION HELPERS
 # ============================================================
 
+def _gate_conversation_backstories(bots, config, mode, skip=False):
+    """Keep each speaker's backstory only when the roleplay-only
+    Backstory.PartyReactionChance gate passes for that speaker."""
+    for bot in bots:
+        bot['backstory'] = (
+            '' if skip else party_reaction_backstory(
+                config, bot.get('backstory'), mode,
+            )
+        )
+
+
 def _quest_conversation_pick_bots(
     db, group_id, reactor_name, members, config=None,
 ):
@@ -2846,7 +2919,7 @@ def _quest_conversation_pick_bots(
         cursor = db.cursor(dictionary=True)
         cursor.execute("""
             SELECT bot_guid, trait1, trait2, trait3,
-                   tone
+                   tone, backstory
             FROM llm_group_bot_traits
             WHERE group_id = %s
                 AND bot_name = %s
@@ -2872,6 +2945,7 @@ def _quest_conversation_pick_bots(
             'name': name,
             'guid': guid,
             'tone': row.get('tone'),
+            'backstory': row.get('backstory'),
             'class': get_class_name(
                 char['class']
             ),
@@ -2883,6 +2957,9 @@ def _quest_conversation_pick_bots(
     if len(bots) < 2:
         return None
 
+    _gate_conversation_backstories(
+        bots, config, get_chatter_mode(config or {}),
+    )
     attach_speaker_gear(db, bots, config)
 
     return bots, traits_map, bot_guids

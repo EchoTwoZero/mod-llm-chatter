@@ -854,7 +854,9 @@ def test_store_is_capped_by_least_recent_use():
     th.note_player_message(3, 'P', 'again')
     th.note_player_message(9, 'P', 'hi')
     with th._lock:
-        assert list(th._store) == [5, 3, 9]
+        assert list(th._store) == [
+            ('party', 5), ('party', 3), ('party', 9),
+        ]
 
 
 def test_config_bounds_and_invalid_values():

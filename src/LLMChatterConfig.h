@@ -391,6 +391,7 @@ public:
     uint32 _emoteUngroupedBotMirrorChance;
     uint32 _emoteUngroupedBotVerbalReactionChance;
     uint32 _emoteUngroupedBotWitnessReactionChance;
+    uint32 _emotePartyBotWitnessChance;
     uint32 _emoteObserverChance;
     uint32 _emoteObserverCooldown;
     uint32 _emoteMoodSpreadChance;

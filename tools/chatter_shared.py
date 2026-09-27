@@ -1737,12 +1737,18 @@ def append_json_instruction(
             if allow_narrator_message
             else ""
         )
+        if extra_field:
+            message_example = (
+                message_example.rstrip('\n') + ',\n'
+                + f'  {extra_field}\n'
+            )
         block = (
             "\n\nRESPONSE FORMAT: You MUST respond with "
             "ONLY valid JSON. No other text.\n"
             "{\n"
             f"{message_example}"
             "}\n"
+            f"{extra_rule + chr(10) if extra_rule else ''}"
             "Rules: double quotes only, no trailing "
             "commas, no code fences, no markdown.\n"
             f"{narrator_rule}"
@@ -1885,12 +1891,17 @@ def append_conversation_json_instruction(
             "quotes/newlines, no trailing commas, "
             "no code fences.\n"
             f"\nRespond with EXACTLY {msg_count} messages "
-            "in JSON:\n"
+            "in JSON"
+            f"{', then one final object' if trailing_object else ''}"
+            ":\n"
             "[\n"
-            f"  {example_msgs}\n"
+            f"  {example_msgs}"
+            f"{f',{chr(10)}  {trailing_object}' if trailing_object else ''}"
+            "\n"
             "]\n"
-            "Each object must contain only \"speaker\" "
+            "Each message object must contain only \"speaker\" "
             "and \"message\".\n"
+            f"{extra_rule + chr(10) if extra_rule else ''}"
             f"{narrator_rule}"
             "ONLY the JSON array, nothing else.\n"
             "CRITICAL: Follow the Length instruction "
@@ -2471,14 +2482,17 @@ def find_addressed_bot(
         f"Judge meaning and conversational function, not "
         f"keywords or message length alone. A concise but "
         f"substantive question is not brief casual talk.\n"
-        f'- "requires_reply": true for every question, request, '
-        f"instruction, warning, important piece of information, "
-        f"greeting that invites engagement, or any turn that "
-        f"expects acknowledgment. Questions always require a reply. "
-        f"For statements, judge their meaning and conversational "
-        f"context: use false only when leaving the statement "
-        f"unanswered would feel socially natural. Do not decide "
-        f"from keywords, punctuation, or message length alone."
+        f'- "requires_reply": false ONLY for throwaway filler '
+        f"that friends would naturally leave unanswered: bare "
+        f"laughter or reactions, stepping-away or status notes, "
+        f"bare acknowledgements, or a sign-off after the "
+        f"exchange has already wound down. Everything else is "
+        f"true: every question, request, instruction, warning, "
+        f"piece of news, greeting, and any statement that shares "
+        f"an opinion, feeling, enthusiasm, complaint or "
+        f"experience, because it invites others to respond. "
+        f"Questions always require a reply. Judge meaning and conversational context, not "
+        f"keywords, punctuation, or message length alone."
     )
 
     try:

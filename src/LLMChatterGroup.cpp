@@ -1303,6 +1303,7 @@ public:
               "LLMChatterGroupPlayerScript",
               {PLAYERHOOK_CAN_PLAYER_USE_GROUP_CHAT,
                PLAYERHOOK_ON_CREATURE_KILL,
+               PLAYERHOOK_ON_CREATURE_KILLED_BY_PET,
                PLAYERHOOK_ON_PLAYER_KILLED_BY_CREATURE,
                PLAYERHOOK_ON_PVP_KILL,
                PLAYERHOOK_ON_LOOT_ITEM,
@@ -1338,6 +1339,14 @@ public:
         Player* killer, Creature* killed) override
     {
         HandleGroupCreatureKillImpl(killer, killed);
+    }
+
+    // A pet or totem landing the killing blow fires this
+    // hook instead of OnPlayerCreatureKill; credit the owner.
+    void OnPlayerCreatureKilledByPet(
+        Player* petOwner, Creature* killed) override
+    {
+        HandleGroupCreatureKillImpl(petOwner, killed);
     }
 
     void OnPlayerKilledByCreature(

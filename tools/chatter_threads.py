@@ -59,6 +59,8 @@ _DEFAULT_WEIGHTS = {
 def _default_settings() -> dict:
     return {
         'enable': True,
+        'guild_enable': True,
+        'general_enable': True,
         'history_size': 5,
         'cool_minutes': 15.0,
         'exchange_decay': 0.7,
@@ -131,6 +133,12 @@ def configure_threads(config) -> None:
         'enable': _int(
             config, 'LLMChatter.Threads.Enable', 1, 0, 1
         ) == 1,
+        'guild_enable': _int(
+            config, 'LLMChatter.Threads.GuildEnable', 1, 0, 1
+        ) == 1,
+        'general_enable': _int(
+            config, 'LLMChatter.Threads.GeneralEnable', 1, 0, 1
+        ) == 1,
         'history_size': _int(
             config, 'LLMChatter.Threads.HistorySize', 5, 1, 10
         ),
@@ -202,8 +210,53 @@ def reset_settings() -> None:
     _settings.update(_default_settings())
 
 
-def threads_enabled() -> bool:
-    return bool(_settings['enable'])
+def threads_enabled(key=None) -> bool:
+    """Master switch, plus the per-channel switch for guild and
+    General keys."""
+    if not _settings['enable']:
+        return False
+    channel = key[0] if isinstance(key, tuple) and key else 'party'
+    if channel == 'guild':
+        return bool(_settings['guild_enable'])
+    if channel == 'general':
+        return bool(_settings['general_enable'])
+    return True
+
+
+def party_key(group_id):
+    """Thread key of a party (group id)."""
+    try:
+        gid = int(group_id or 0)
+    except (TypeError, ValueError):
+        gid = 0
+    return ('party', gid) if gid else None
+
+
+def guild_key(guild_id):
+    """Thread key of a guild's chat."""
+    try:
+        gid = int(guild_id or 0)
+    except (TypeError, ValueError):
+        gid = 0
+    return ('guild', gid) if gid else None
+
+
+def general_key(zone_id, faction):
+    """Thread key of one zone's General channel for one faction
+    (Alliance and Horde each have their own General)."""
+    try:
+        zid = int(zone_id or 0)
+    except (TypeError, ValueError):
+        zid = 0
+    side = str(faction or '').strip().lower()
+    return ('general', zid, side) if zid and side else None
+
+
+def _key(value):
+    """Normalize a thread key. Plain ints are party group ids."""
+    if isinstance(value, tuple):
+        return value if value else None
+    return party_key(value)
 
 
 def report_tokens() -> int:
@@ -277,7 +330,7 @@ class GroupThreads:
 class IdleTurn:
     """The plan for one idle exchange, handed back on record."""
 
-    group_id: int
+    group_id: tuple
     session: int
     major_rev: int
     kind: str                       # continue|drift|callback|new
@@ -293,7 +346,7 @@ class IdleTurn:
     planned_at: float = 0.0
 
 
-_store: 'collections.OrderedDict[int, GroupThreads]' = (
+_store: 'collections.OrderedDict[tuple, GroupThreads]' = (
     collections.OrderedDict()
 )
 _lock = threading.RLock()
@@ -308,12 +361,15 @@ def _expired(state: GroupThreads, now: float) -> bool:
     return now - state.last_touch > _settings['idle_ttl_minutes'] * 60
 
 
-def _get(group_id: int, create: bool) -> Optional[GroupThreads]:
+def _get(group_id, create: bool) -> Optional[GroupThreads]:
     """Look up (optionally create) a group's state. Holds _lock.
 
     Expired states are dropped on lookup regardless of store size,
     and the store is capped by evicting least recently used groups.
     """
+    group_id = _key(group_id)
+    if group_id is None:
+        return None
     now = _now()
     state = _store.get(group_id)
     if state is not None and _expired(state, now):
@@ -336,10 +392,13 @@ def _get(group_id: int, create: bool) -> Optional[GroupThreads]:
     return state
 
 
-def clear_group(group_id: int) -> None:
-    """Forget a group's threads (group cleanup)."""
+def clear_group(group_id) -> None:
+    """Forget a thread (party group id or channel key)."""
+    key = _key(group_id)
+    if key is None:
+        return
     with _lock:
-        _store.pop(int(group_id or 0), None)
+        _store.pop(key, None)
 
 
 def clear_all() -> None:
@@ -355,10 +414,17 @@ def reconcile_active_groups(active_group_ids: Iterable) -> None:
     removed, disband, logout) are cleared even when other players
     stay online.
     """
-    active = {int(g) for g in active_group_ids or () if g}
+    active = {
+        party_key(g) for g in active_group_ids or ()
+    } - {None}
     with _lock:
-        for gid in [g for g in _store if g not in active]:
-            del _store[gid]
+        # Only party threads follow the party list; guild and
+        # General threads expire through the TTL/LRU limits.
+        for key in [
+            k for k in _store
+            if k[0] == 'party' and k not in active
+        ]:
+            del _store[key]
 
 
 def _effective_energy(thread: Thread, now: float) -> float:
@@ -502,10 +568,11 @@ def capture_session(group_id) -> Optional[int]:
     the completion is rejected instead of resurrecting or
     contaminating state. Returns None when threads are disabled.
     """
-    if not threads_enabled() or not group_id:
+    key = _key(group_id)
+    if key is None or not threads_enabled(key):
         return None
     with _lock:
-        return _get(int(group_id), create=True).session
+        return _get(key, create=True).session
 
 
 def note_event(group_id, event_type, speaker='', message='',
@@ -524,13 +591,14 @@ def note_event(group_id, event_type, speaker='', message='',
     Without it (direct callers), the event applies to the current
     state, creating one if needed.
     """
-    if not threads_enabled() or not group_id:
+    key = _key(group_id)
+    if key is None or not threads_enabled(key):
         return
     now = _now()
     label = _event_label(event_type)
     with _lock:
         if session is not _ANY_SESSION:
-            state = _get(int(group_id), create=False)
+            state = _get(key, create=False)
             if (
                 session is None
                 or state is None
@@ -538,7 +606,7 @@ def note_event(group_id, event_type, speaker='', message='',
             ):
                 return
         else:
-            state = _get(int(group_id), create=True)
+            state = _get(key, create=True)
         state.interruptions.append({
             'kind': 'event',
             'label': label,
@@ -567,10 +635,11 @@ def note_player_message(group_id, player_name, message) -> None:
     Player lines reach this point already spoken in game, so they
     are facts immediately.
     """
-    if not threads_enabled() or not group_id or not message:
+    key = _key(group_id)
+    if key is None or not message or not threads_enabled(key):
         return
     with _lock:
-        state = _get(int(group_id), create=True)
+        state = _get(key, create=True)
         state.interruptions.append({
             'kind': 'player',
             'label': 'player',
@@ -633,12 +702,13 @@ def plan_idle_turn(
     delivery first. Returns None when threads are disabled; callers
     then keep their original topic behaviour.
     """
-    if not threads_enabled() or not group_id:
+    key = _key(group_id)
+    if key is None or not threads_enabled(key):
         return None
     now = _now()
     solo = len(speaker_names) <= 1
     with _lock:
-        state = _get(int(group_id), create=True)
+        state = _get(key, create=True)
         _reconcile(db, state, now)
         current = state.current
         energy = (
@@ -663,7 +733,7 @@ def plan_idle_turn(
             pool_topic, callback_topic, surprise, solo, now,
         )
         return IdleTurn(
-            group_id=int(group_id),
+            group_id=key,
             session=state.session,
             major_rev=state.major_rev,
             kind=move,
@@ -820,11 +890,12 @@ def render_for_player_reply(group_id, db=None) -> str:
 
     Only confirmed (delivered) conversation is described.
     """
-    if not threads_enabled() or not group_id:
+    key = _key(group_id)
+    if key is None or not threads_enabled(key):
         return ''
     now = _now()
     with _lock:
-        state = _get(int(group_id), create=False)
+        state = _get(key, create=False)
         if state is None:
             return ''
         _reconcile(db, state, now)
@@ -937,7 +1008,7 @@ def record_idle_exchange(
     when any line of the model's dialogue was filtered before
     queueing; the report is then never adopted.
     """
-    if turn is None or not threads_enabled():
+    if turn is None or not threads_enabled(turn.group_id):
         return
     ids = tuple(int(i) for i in message_ids or () if i)
     if not ids:
@@ -1051,7 +1122,7 @@ def _expire_feelings(state: GroupThreads) -> None:
 def snapshot(group_id) -> Optional[GroupThreads]:
     """Deep copy of a group's state (tests and diagnostics)."""
     with _lock:
-        state = _store.get(int(group_id or 0))
+        state = _store.get(_key(group_id))
         if state is None:
             return None
         return dataclasses.replace(

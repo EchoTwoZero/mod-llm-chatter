@@ -36,6 +36,11 @@ from chatter_mode import (
     build_player_chat_guidance,
     build_player_prompt_header,
 )
+from chatter_threads import (
+    THREAD_REPORT_FIELD,
+    THREAD_REPORT_OBJECT,
+    THREAD_REPORT_RULE,
+)
 from chatter_persona import (
     build_cast_lines,
     build_persona_block,
@@ -497,6 +502,7 @@ def build_plain_statement_prompt(
     topic: str = None,
     area_id: int = 0,
     length_hint: str = "",
+    thread_turn=None,
 ) -> str:
     """Build a dynamically varied prompt for a plain statement."""
     mode = get_chatter_mode(config) if config else 'normal'
@@ -531,6 +537,10 @@ def build_plain_statement_prompt(
 
     if topic:
         parts.append(f"Topic: {topic}")
+    # The zone channel's conversation thread replaces the
+    # random topic (the caller then passes topic=None).
+    if thread_turn is not None:
+        parts.append(thread_turn.prompt_block)
 
     zone_flavor = get_zone_flavor(zone_id)
     if is_rp and zone_flavor:
@@ -615,12 +625,21 @@ def build_plain_statement_prompt(
     parts.append("Guidelines: " + "; ".join(guidelines))
 
     anti_rep = build_anti_repetition_context(
-        recent_messages
+        recent_messages,
+        allow_same_subject=bool(
+            thread_turn and thread_turn.builds_on_subject
+        ),
     )
     if anti_rep:
         parts.append(anti_rep)
 
     prompt = "\n".join(parts)
+    if thread_turn is not None:
+        return append_json_instruction(
+            prompt, allow_action, skip_emote=True,
+            extra_field=THREAD_REPORT_FIELD,
+            extra_rule=THREAD_REPORT_RULE,
+        )
     return append_json_instruction(
         prompt, allow_action, skip_emote=True
     )
@@ -1045,6 +1064,7 @@ def build_plain_conversation_prompt(
     speaker_talent_context=None,
     topic: str = None,
     area_id: int = 0,
+    thread_turn=None,
 ) -> str:
     """Build a prompt for a plain conversation with 2-4 bots."""
     mode = get_chatter_mode(config) if config else 'normal'
@@ -1077,6 +1097,8 @@ def build_plain_conversation_prompt(
 
     if topic:
         parts.append(f"Topic: {topic}")
+    if thread_turn is not None:
+        parts.append(thread_turn.prompt_block)
 
     zone_flavor = get_zone_flavor(zone_id)
     if is_rp and zone_flavor:
@@ -1216,7 +1238,7 @@ def build_plain_conversation_prompt(
             "complaining about something",
             "celebrating something",
         ]
-    if random.random() < 0.5:
+    if thread_turn is None and random.random() < 0.5:
         parts.append(
             f"Topic hint: {random.choice(topics)}"
         )
@@ -1259,12 +1281,21 @@ def build_plain_conversation_prompt(
     parts.append("Guidelines: " + "; ".join(guidelines))
 
     anti_rep = build_anti_repetition_context(
-        recent_messages
+        recent_messages,
+        allow_same_subject=bool(
+            thread_turn and thread_turn.builds_on_subject
+        ),
     )
     if anti_rep:
         parts.append(anti_rep)
 
     prompt = "\n".join(parts)
+    if thread_turn is not None:
+        return append_conversation_json_instruction(
+            prompt, bot_names, msg_count, allow_action,
+            trailing_object=THREAD_REPORT_OBJECT,
+            extra_rule=THREAD_REPORT_RULE,
+        )
     return append_conversation_json_instruction(
         prompt, bot_names, msg_count, allow_action
     )

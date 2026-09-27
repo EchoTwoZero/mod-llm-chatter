@@ -36,7 +36,12 @@ from chatter_group_state import (
     get_bot_traits,
     update_bot_mood,
 )
-from chatter_persona import format_mood_line, resolve_mood
+from chatter_persona import (
+    format_backstory_block,
+    format_mood_line,
+    party_reaction_backstory,
+    resolve_mood,
+)
 from chatter_threads import capture_session, note_event
 from chatter_raid_base import dual_worker_dispatch
 
@@ -299,6 +304,16 @@ def run_group_handler(
 
         # 10. Build prompt
         prompt = build_prompt(ctx)
+
+        # 10b. Backstory (roleplay only, config-gated),
+        # same wording as the persona block.
+        backstory = party_reaction_backstory(
+            config, trait_data.get('backstory'), mode,
+        )
+        if backstory:
+            prompt += (
+                f"\n{format_backstory_block(backstory, mode)}"
+            )
 
         # 11. Mood injection: the bot's real event
         # mood, shared with guild and General.

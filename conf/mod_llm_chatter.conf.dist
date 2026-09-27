@@ -3140,6 +3140,19 @@ LLMChatter.Backstory.Enable = 1
 LLMChatter.Backstory.IdleChance = 100
 
 #
+#   LLMChatter.Backstory.PartyReactionChance [BRIDGE]
+#       Percent chance (0-100) that a party bot's backstory is included
+#       when it reacts to a party event (kills, loot, deaths, level-ups,
+#       quests, zone changes...) or replies to the player, including
+#       each speaker in multi-bot party conversations. Roleplay mode
+#       only; quick casual replies never include it. Lower it to save
+#       prompt tokens (roughly 50-150 per bot).
+#       Requires bridge restart to take effect.
+#       Default: 50
+#
+LLMChatter.Backstory.PartyReactionChance = 50
+
+#
 #   LLMChatter.Backstory.ProximityChance [BRIDGE]
 #       Percent chance (0-100) that a bot's backstory
 #       is included in proximity chatter prompts.
@@ -3193,7 +3206,7 @@ LLMChatter.Persona.SpiceChance = 30
 LLMChatter.PersonalitySpiceCount = 2
 
 ###############################################################################
-# CONVERSATION THREADS (party idle chatter)
+# CONVERSATION THREADS (party, guild and General chatter)
 ###############################################################################
 #
 #   Party idle chatter follows a conversation thread instead of a fresh
@@ -3210,6 +3223,19 @@ LLMChatter.PersonalitySpiceCount = 2
 #       Default: 1
 #
 LLMChatter.Threads.Enable = 1
+
+#
+#   LLMChatter.Threads.GuildEnable [BRIDGE]
+#   LLMChatter.Threads.GeneralEnable [BRIDGE]
+#       Per-channel switches under Threads.Enable. Guild chat keeps one
+#       thread per guild; the General channel keeps one per zone and
+#       faction (Alliance and Horde each have their own General). Their
+#       ambient lines follow the thread, and replies to the player see
+#       it. 0 = that channel keeps the random-topic behaviour.
+#       Defaults: 1 / 1
+#
+LLMChatter.Threads.GuildEnable = 1
+LLMChatter.Threads.GeneralEnable = 1
 
 #
 #   LLMChatter.Threads.HistorySize [BRIDGE]
@@ -3413,10 +3439,32 @@ LLMChatter.EmoteReactions.UngroupedBotWitnessReactionChance = 50
 #
 #   LLMChatter.EmoteReactions.ObserverChance
 #       Percent chance (0-100) that a nearby bot comments when
-#       the player emotes at an NPC, stranger, or nobody.
+#       the player emotes at an NPC, stranger, nobody, or another
+#       bot in the party (then one of the other nearby party bots
+#       chimes in; the target keeps its own reaction).
 #       Default: 50
 #
 LLMChatter.EmoteReactions.ObserverChance = 50
+
+#
+#   LLMChatter.EmoteReactions.PartyObserverExchangeChance [BRIDGE]
+#       When a party bot chimes in on the player's emote at another
+#       party bot, percent chance (0-100) that it becomes a short
+#       two-line exchange: the observer remarks and the targeted bot
+#       answers it. Otherwise a single comment.
+#       Default: 35
+#
+LLMChatter.EmoteReactions.PartyObserverExchangeChance = 35
+
+#
+#   LLMChatter.EmoteReactions.PartyBotWitnessChance [SERVER]
+#       Percent chance (0-100) that nearby NPCs or playerbots outside
+#       the party witness the player's emote at a party bot and react
+#       in /say (proximity chatter must be enabled). The party bot
+#       itself answers in party chat.
+#       Default: 30
+#
+LLMChatter.EmoteReactions.PartyBotWitnessChance = 30
 
 #
 #   LLMChatter.EmoteReactions.ObserverCooldown
@@ -3427,10 +3475,12 @@ LLMChatter.EmoteReactions.ObserverChance = 50
 LLMChatter.EmoteReactions.ObserverCooldown = 30
 
 #
-#   LLMChatter.EmoteReactions.MoodSpreadChance
-#       Percent chance (0-100) that a contagious emote
-#       (dance, cheer, laugh) spreads to other nearby bots.
-#       Currently unimplemented — reserved for future use.
+#   LLMChatter.EmoteReactions.MoodSpreadChance [SERVER]
+#       Percent chance (0-100), rolled per nearby party bot, that a
+#       contagious emote (dance, cheer, laugh, applaud, rofl,
+#       victory) the player does at a party bot or at nobody spreads:
+#       the bot mirrors the animation. Respects each bot's mirror
+#       cooldown; no chat line, no LLM call.
 #       Default: 50
 #
 LLMChatter.EmoteReactions.MoodSpreadChance = 50

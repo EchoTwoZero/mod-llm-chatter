@@ -826,7 +826,11 @@ Nothing random overrides its identity.
   subordinate to the speaker's personality.
 - **Backstory reach**: in roleplay mode, party idle chatter and idle
   conversations include the backstory at
-  `LLMChatter.Backstory.IdleChance` percent (default 100).
+  `LLMChatter.Backstory.IdleChance` percent (default 100). Party event
+  reactions, replies to the player and multi-bot party conversations
+  include each speaker's backstory at
+  `LLMChatter.Backstory.PartyReactionChance` percent (default 50);
+  quick casual replies never do.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -836,10 +840,15 @@ Nothing random overrides its identity.
 
 All three are bridge-side settings and need a bridge restart.
 
-### Conversation threads (party)
+### Conversation threads (party, guild, General)
 
-Party idle chatter now behaves like a group of friends talking rather
-than a fresh random topic each time.
+Party idle chatter, guild chat and the General channel now behave
+like people talking rather than a fresh random topic each time. Each
+party has its own thread, each guild has one, and each zone's General
+channel has one per faction; whoever speaks next picks up or shifts
+that talk through their own personality. Guild and General can be
+switched off separately (`Threads.GuildEnable`,
+`Threads.GeneralEnable`).
 
 - A subject usually runs for a few exchanges, then drifts to something
   related, gets called back later ("about what you said earlier"), or
@@ -867,6 +876,7 @@ than a fresh random topic each time.
 | Key | Default | Meaning |
 |---|---|---|
 | `LLMChatter.Threads.Enable` | 1 | Turn conversation threads on or off |
+| `LLMChatter.Threads.GuildEnable` / `GeneralEnable` | 1 / 1 | Per-channel switches for guild chat and the General channel |
 | `LLMChatter.Threads.HistorySize` | 5 | Finished subjects remembered for callbacks |
 | `LLMChatter.Threads.ExchangeDecay` | 70 | Percent of energy a subject keeps per exchange (stickiness) |
 | `LLMChatter.Threads.CoolMinutes` | 15 | Minutes of silence that halve a subject's energy |
@@ -1872,6 +1882,9 @@ bots. Direct creature and ungrouped-playerbot reactions do not.
 | Ungrouped playerbot witness reaction | The addressed ungrouped playerbot's verbal roll fails | Independently rolls a 50% default chance, then selects one or two compatible nearby NPCs/ungrouped bots. The addressed bot remains silent and outside the speaking roster, but stays in the event as structured context so every witness comments on the same player emote |
 | Directed NPC verbal reaction | Player emotes at an eligible creature | Independently rolls an 80% default chance, then queues `proximity_player_emote`. The addressed NPC always responds first; zero to two compatible NPCs can join. Per-player/NPC cooldown `_directedEmoteCooldowns`; an actually scheduled mirror animation is included in the prompt so speech cannot contradict it |
 | Observer comment | Player emotes at a creature, external player, or nobody | Independently rolls a 50% default chance for a random group bot to queue a `bot_group_emote_observer` event. Python makes the bot offer an offhand remark. Per-group cooldown `_emoteObserverCooldowns` |
+| Party observer | Player emotes at a group bot (out of combat) | Besides the target's own mirror and reply, another nearby party bot may chime in through the same observer path (`target_type: party_bot`, same chance and per-group cooldown). At `PartyObserverExchangeChance` (35% default) it becomes a two-line exchange: the observer remarks and the targeted bot answers the observer; otherwise one comment |
+| Party-bot witnesses | Player emotes at a group bot (out of combat) | Rolls `PartyBotWitnessChance` (30% default); nearby NPCs and non-party playerbots may react in `/say` through a witness-only `proximity_player_emote` scene (the party bot stays silent there, it answers in party chat). Shares `_directedBotEmoteCooldowns` under a `partybot:` key |
+| Mood spread | A contagious emote (dance, cheer, laugh, applaud, rofl, victory) at a group bot or at nobody | Each other nearby alive party bot rolls `MoodSpreadChance` (50% default) to mirror the animation, respecting its own mirror cooldown. Animation only, no chat, no LLM call |
 
 Creatures also mirror emotes directed at them via
 `DelayedCreatureMirrorEmoteEvent`. Creature verbal and mirror reactions
@@ -1961,7 +1974,9 @@ are excluded from observer comments only.
 | `LLMChatter.EmoteReactions.UngroupedBotWitnessReactionChance` | 50 | Conditional % chance of a witness-only scene when the addressed bot stays silent |
 | `LLMChatter.EmoteReactions.ObserverChance` | 50 | % chance of grouped-bot observer comment |
 | `LLMChatter.EmoteReactions.ObserverCooldown` | 30 | Seconds per-group cooldown for observer |
-| `LLMChatter.EmoteReactions.MoodSpreadChance` | 50 | Reserved contagious-emote mood chance |
+| `LLMChatter.EmoteReactions.MoodSpreadChance` | 50 | % chance, per nearby party bot, that a contagious emote spreads as a mirrored animation |
+| `LLMChatter.EmoteReactions.PartyObserverExchangeChance` | 35 | % chance a party observer comment becomes a two-line exchange with the targeted bot (bridge) |
+| `LLMChatter.EmoteReactions.PartyBotWitnessChance` | 30 | % chance nearby NPCs/non-party bots witness an emote at a party bot in `/say` (server) |
 | `LLMChatter.EmoteReactions.NPCMirrorEnable` | 1 | Enable delayed NPC mirror animations |
 | `LLMChatter.EmoteReactions.NPCVerbalReactionChance` | 80 | Independent chance that a directed eligible NPC speaks |
 | `LLMChatter.EmoteReactions.NPCVerbalCooldown` | 3 | Seconds per player/NPC verbal-emote cooldown; clamped to 0-3 |
@@ -2504,7 +2519,13 @@ grouped mirror silently. Grouped verbal reactions remain unaffected.
 Every ordinary proximity prompt receives the canonical DBC map name,
 map and instance IDs, zone/current-area names, and existing curated
 dungeon flavor where available. `chatter_instance_context.py` owns this
-shared normalization. NPCs also carry disposition and creature rank.
+shared normalization. NPCs also carry disposition and creature rank,
+plus their race (from the display model's `CreatureDisplayInfoExtra`
+entry, named through `ChrRaces`, so non-playable races resolve too) and
+faction affiliation (faction template to `Faction.dbc` name). Every
+proximity prompt also describes the nearby real player (level, gender,
+race, class) and, in the open world only, the time of day with
+opportunistic season and live zone weather.
 Curated non-humanoids additionally carry creature type and their
 qualification reason so the model knows that the individual can speak
 without generalizing that ability to its whole species.

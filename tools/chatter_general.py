@@ -50,6 +50,11 @@ from chatter_prompts import (
     format_spices_line,
     TWIST_LABEL,
 )
+from chatter_threads import (
+    general_key,
+    note_player_message,
+    render_for_player_reply,
+)
 from chatter_persona import (
     Persona,
     build_persona_block,
@@ -331,10 +336,28 @@ def _resolve_zone_context(db, player_name, extra_data):
     }
 
 
+def _find_online_general_bot(db, bot_name, player_faction):
+    """Guid of an online bot named bot_name in the player's
+    faction, or None."""
+    if not bot_name or not player_faction:
+        return None
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT guid, race
+        FROM characters
+        WHERE name = %s AND online = 1
+    """, (bot_name,))
+    row = cursor.fetchone()
+    cursor.close()
+    if not row or get_race_faction(row.get('race')) != player_faction:
+        return None
+    return int(row['guid'])
+
+
 def _select_primary_bot(
     db, client, config, bot_guids, bot_names,
     player_name, player_message, mode,
-    chat_hist="",
+    chat_hist="", player_faction=None,
 ):
     """Pick the primary bot for a General reaction.
 
@@ -379,6 +402,18 @@ def _select_primary_bot(
             if name == addressed:
                 bot1_idx = i
                 break
+    if addressed and bot1_idx is None:
+        # The zone sample is capped (MaxBotsPerZone), so the
+        # bot the player is talking to can be left out of it.
+        # Keep the conversation with them instead of handing
+        # the reply to a random stranger.
+        guid = _find_online_general_bot(
+            db, addressed, player_faction,
+        )
+        if guid:
+            bot_guids.append(guid)
+            bot_names.append(addressed)
+            bot1_idx = len(bot_guids) - 1
     if bot1_idx is None:
         bot1_idx = random.randint(
             0, len(bot_guids) - 1
@@ -424,9 +459,14 @@ def _build_general_response_prompt(
     subzone_name="",
     subzone_lore="",
     brief_casual=False,
+    thread_context="",
 ):
     """Build prompt for a bot responding to a
     player's General channel message.
+
+    thread_context: read-only zone-channel thread note
+    (chatter_threads.render_for_player_reply); skipped
+    for brief casual replies.
     """
     is_rp = (mode == 'roleplay')
     persona = _as_persona(persona, bot_name, mode)
@@ -517,7 +557,11 @@ def _build_general_response_prompt(
         f"{player_name} just said in General "
         f"channel:\n"
         f"\"{player_message}\"\n\n"
-        f"{style}\n\n"
+        + (
+            f"{thread_context}\n\n"
+            if thread_context and not brief_casual else ""
+        )
+        + f"{style}\n\n"
         f"Reply in General channel.\n"
         + (
             "Length: 2-8 words, no more than 50 characters.\n"
@@ -783,6 +827,13 @@ def process_general_player_msg_event(
         mark_event(db, event_id, 'skipped')
         return False
 
+    # The zone channel's conversation thread: replies see what
+    # the channel was talking about, and the player's line
+    # joins it for the next ambient exchange.
+    thread_key = general_key(zone_id, player_faction)
+    thread_context = render_for_player_reply(thread_key, db)
+    note_player_message(thread_key, player_name, player_message)
+
     try:
         mode = get_chatter_mode(config)
 
@@ -803,6 +854,7 @@ def process_general_player_msg_event(
             bot_names, player_name,
             player_message, mode,
             chat_hist=chat_hist,
+            player_faction=player_faction,
         )
         if not primary:
             mark_event(db, event_id, 'skipped')
@@ -890,6 +942,7 @@ def process_general_player_msg_event(
             subzone_name=subzone_name,
             subzone_lore=subzone_lore,
             brief_casual=brief_casual,
+            thread_context=thread_context,
         )
 
         max_tokens = int(config.get(

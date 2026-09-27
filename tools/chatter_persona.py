@@ -316,6 +316,50 @@ def format_mood_line(mood: str, subject: str = 'you') -> str:
     )
 
 
+def format_backstory_block(backstory: str, mode: str) -> str:
+    """Render a speaker's backstory (roleplay mode only).
+
+    The single wording shared by the persona block, party event
+    reactions and replies to the player.
+    """
+    text = (backstory or '').strip()
+    if not text or not is_roleplay(mode):
+        return ''
+    return (
+        "<backstory>\n"
+        f"Your history: {text}\n"
+        "Draw from this background naturally if it fits "
+        "the moment -- don't force it.\n"
+        "</backstory>"
+    )
+
+
+def party_reaction_backstory(config, backstory, mode) -> str:
+    """Backstory for a party reaction or reply, or '' when gated.
+
+    Roleplay only, and only when LLMChatter.Backstory.Enable is on
+    and the LLMChatter.Backstory.PartyReactionChance roll passes.
+    """
+    text = (backstory or '').strip()
+    if not text or not is_roleplay(mode):
+        return ''
+    config = config or {}
+    try:
+        enabled = int(config.get('LLMChatter.Backstory.Enable', 1))
+        chance = int(config.get(
+            'LLMChatter.Backstory.PartyReactionChance', 50
+        ))
+    except (TypeError, ValueError):
+        logger.error("Invalid Backstory party reaction settings")
+        return ''
+    chance = max(0, min(chance, 100))
+    if not enabled or chance <= 0:
+        return ''
+    if chance < 100 and random.randint(1, 100) > chance:
+        return ''
+    return text
+
+
 def build_persona_block(
     persona: Persona, mode: str, include_rule: bool = True,
 ) -> str:
@@ -327,14 +371,9 @@ def build_persona_block(
         )
     if persona.tone:
         lines.append(f"Your tone: {persona.tone}")
-    if persona.backstory and is_roleplay(mode):
-        lines.append(
-            "<backstory>\n"
-            f"Your history: {persona.backstory}\n"
-            "Draw from this background naturally if it fits "
-            "the moment -- don't force it.\n"
-            "</backstory>"
-        )
+    backstory_block = format_backstory_block(persona.backstory, mode)
+    if backstory_block:
+        lines.append(backstory_block)
     mood_line = format_mood_line(persona.mood)
     if mood_line:
         lines.append(mood_line)

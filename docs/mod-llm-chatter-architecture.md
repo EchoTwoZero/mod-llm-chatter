@@ -471,6 +471,16 @@ tone, traits or mood.
   their own identity lines, but take tone from the stored value or
   `fallback_tone()` and mood from `resolve_mood()`, never from a
   random roll.
+- **Backstory**: `format_backstory_block()` is the one backstory
+  wording (roleplay only), used by the persona block and by party
+  reactions. `party_reaction_backstory()` gates it with
+  `LLMChatter.Backstory.Enable` and `PartyReactionChance`.
+  `run_group_handler()` appends it after `build_prompt()`, as does the
+  zone-transition handler; `build_player_response_prompt(backstory=)`
+  renders it for replies to the player (skipped for brief casual
+  turns); multi-bot party conversations gate each speaker's
+  `backstory` field (`_gate_conversation_backstories()`), which
+  `_append_bots_with_rp()` renders through the cast block.
 - **Flavor**: `chatter_prompts.py` owns the gates. Creative twists use
   `LLMChatter.Persona.TwistChance` and are labelled as optional angles.
   Spices must pass `LLMChatter.Persona.SpiceChance` before
@@ -485,8 +495,32 @@ Bridge startup loads the flavor settings once from
 ## Conversation Thread Ownership
 
 `tools/chatter_threads.py` owns conversational continuity for party
-idle chatter: the per-group thread store, the soft nudge for each idle
-exchange, prompt rendering, and parsing of the model's thread report.
+idle chatter, guild chat and the General channel: the thread store,
+the soft nudge for each exchange, prompt rendering, and parsing of the
+model's thread report.
+
+- **Keys**: `('party', group_id)` (plain group ids are normalized),
+  `guild_key(guild_id)` and `general_key(zone_id, faction)` (General is
+  split by faction). `reconcile_active_groups()` prunes party keys only;
+  guild and General threads end through the TTL/LRU limits and
+  `cleanup_all_session_data()`. `threads_enabled(key)` applies
+  `Threads.GuildEnable` / `Threads.GeneralEnable` under
+  `Threads.Enable`.
+- **General**: `chatter_ambient.process_statement()` and
+  `process_conversation()` plan a turn for `plain` messages only (the
+  other ambient types keep their own prompts), pass it to
+  `build_plain_statement_prompt()` / `build_plain_conversation_prompt()`
+  in place of the random topic, and record the queued row ids (the
+  conversation marks the exchange incomplete when a line was dropped).
+  `process_general_player_msg_event()` notes the player's line and
+  gives the reply prompt read-only context.
+- **Guild**: `process_guild_idle_chatter_event()` plans one turn and
+  shares it with the statement fallback; `_build_guild_prompt()` and
+  `_build_guild_conversation_prompt()` swap the topic idea / shared
+  subject for the thread block and request the report through the
+  message-only schemas (`extra_field` / `trailing_object`). A repaired
+  conversation is never adopted. Guild player replies note the
+  player's line and append read-only context after the session memory.
 
 - **Store**: in memory, keyed by group id and guarded by one lock. It
   holds the current subject (topic label, energy 0-1, open point,
@@ -975,7 +1009,13 @@ This asymmetry is known and acceptable in the shipped source state.
 | File | Primary ownership |
 |---|---|
 | `tools/chatter_emote_reaction.py` | Directed verbal reaction handler (`bot_group_emote_reaction` event) — bot responds verbally when player emotes at them |
-| `tools/chatter_emote_observer.py` | Observer comment handler (`bot_group_emote_observer` event) — random group bot remarks when player emotes at a creature or nobody |
+| `tools/chatter_emote_observer.py` | Observer comment handler (`bot_group_emote_observer` event) — random group bot remarks when player emotes at a creature, a stranger, nobody, or another party bot (`party_bot`, optionally a two-line exchange with that bot). Both emote handlers note their delivered line in the party conversation thread |
+
+When the player emotes at a party bot, `HandleGroupPlayerTextEmoteImpl()`
+also (out of combat) calls `HandleEmoteObserver()` with the other nearby party
+bots and `HandleProximityPartyBotEmoteWitness()` (LLMChatterProximity.cpp) for
+nearby NPCs and non-party bots, and calls `HandleEmoteMoodSpread()` for
+contagious emotes (also for undirected ones).
 
 Free-text emotes (`/e`, `/me`) arrive through the chat hook, not
 `OnPlayerTextEmote`. `HandleGroupPlayerCustomEmoteImpl()` sanitizes the text
@@ -1203,9 +1243,10 @@ ungrouped bots; grouped verbal reactions are not range-gated by this check.
 callers. The cache uses AzerothCore's registered creature encounters as
 its authoritative dungeon/raid source, with rank, boss flag, and
 single-spawn immunity metadata retained as fallbacks for unregistered
-special bosses. The enter-combat reaction intentionally retains its legacy
-rank/boss-flag predicate so this feature does not alter established combat
-reaction probabilities.
+special bosses. Kill and enter-combat reactions share this classifier, so
+a registered dungeon encounter boss of elite rank counts as a boss on the
+pull as well as on the kill. `OnPlayerCreatureKilledByPet` routes pet and
+totem killing blows through the same kill path, credited to the owner.
 
 ### World ownership
 
