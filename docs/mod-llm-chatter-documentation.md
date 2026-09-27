@@ -522,6 +522,8 @@ handler map.
 - `tools/chatter_prompts.py`
 - `tools/chatter_persona.py` - bot persona (identity + real event
   mood) for Party, Guild and General prompts
+- `tools/chatter_threads.py` - party conversation threads (continuity,
+  subject changes, lingering feelings)
 - `tools/chatter_constants.py`
 - `tools/chatter_cache.py`
 - `tools/talent_catalog.py`
@@ -833,6 +835,58 @@ Nothing random overrides its identity.
 | `LLMChatter.PersonalitySpiceCount` | 2 | How many background feelings when the spice roll passes |
 
 All three are bridge-side settings and need a bridge restart.
+
+### Conversation threads (party)
+
+Party idle chatter now behaves like a group of friends talking rather
+than a fresh random topic each time.
+
+- A subject usually runs for a few exchanges, then drifts to something
+  related, gets called back later ("about what you said earlier"), or
+  gives way to a fresh one. Fresh subjects mostly come from what a bot
+  personally cares about, then from the surroundings, and only
+  occasionally from the random topic pool.
+- Feelings linger: if a bot was stung or delighted, that carries into
+  the next exchanges even after the subject changes, and shows through
+  its personality. Disagreements are real but friendly.
+- Your party messages blend in: bots answer you and weave the ongoing
+  subject in when it relates, then may drift back to it later.
+- Events interrupt: after a fight or loot, the talk can resume if the
+  subject still has life in it. A wipe or a death takes over the
+  conversation.
+- Nothing is scripted. Each exchange gets a soft nudge the model may
+  ignore, and every kind of move stays possible. Now and then a bot is
+  explicitly allowed a believable surprise: changing its mind, going
+  off on a tangent or taking an unexpected stance.
+- The model reports the thread state in the same call, so there are no
+  extra LLM calls. Only lines that were actually delivered in game
+  count: an exchange that was dropped or never spoken leaves no trace.
+- The state lives in bridge memory for the group session and is
+  cleared when the group ends or the bridge restarts.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `LLMChatter.Threads.Enable` | 1 | Turn conversation threads on or off |
+| `LLMChatter.Threads.HistorySize` | 5 | Finished subjects remembered for callbacks |
+| `LLMChatter.Threads.ExchangeDecay` | 70 | Percent of energy a subject keeps per exchange (stickiness) |
+| `LLMChatter.Threads.CoolMinutes` | 15 | Minutes of silence that halve a subject's energy |
+| `LLMChatter.Threads.FeelingTurns` | 3 | Exchanges a lingering feeling stays visible |
+| `LLMChatter.Threads.PersonaTopicWeight` | 60 | Fresh subjects from a bot's own interests |
+| `LLMChatter.Threads.SurroundingsTopicWeight` | 30 | Fresh subjects from the surroundings |
+| `LLMChatter.Threads.PoolTopicWeight` | 10 | Fresh subjects from the random topic pool |
+| `LLMChatter.Threads.SurpriseChance` | 12 | Percent of exchanges that explicitly allow a surprise |
+| `LLMChatter.Threads.HighEnergyThreshold` / `LowEnergyThreshold` | 60 / 30 | Energy bands for the move weights |
+| `LLMChatter.Threads.HighEnergyMoveWeights` | 70,20,5,5 | continue,drift,callback,new weights for a lively subject |
+| `LLMChatter.Threads.MidEnergyMoveWeights` | 35,35,15,15 | Weights for a subject with some life left |
+| `LLMChatter.Threads.LowEnergyMoveWeights` | 10,25,25,40 | Weights for a subject running out |
+| `LLMChatter.Threads.PendingTimeoutSeconds` | 300 | Unsent lines after this count as dropped |
+| `LLMChatter.Threads.MaxPending` | 6 | Unconfirmed idle exchanges held per party |
+| `LLMChatter.Threads.IdleTTLMinutes` | 180 | Forget a party's threads after this much inactivity |
+| `LLMChatter.Threads.MaxGroups` | 200 | Parties kept in thread memory |
+| `LLMChatter.Threads.MaxInterruptions` | 4 | Recent player lines/events shown to the next exchange |
+| `LLMChatter.Threads.ReportTokens` | 90 | Output tokens reserved for the thread report |
+
+All are bridge-side settings and need a bridge restart.
 
 ---
 

@@ -482,6 +482,96 @@ tone, traits or mood.
 Bridge startup loads the flavor settings once from
 `chatter_group.init_group_config()` (`configure_prompt_flavor()`).
 
+## Conversation Thread Ownership
+
+`tools/chatter_threads.py` owns conversational continuity for party
+idle chatter: the per-group thread store, the soft nudge for each idle
+exchange, prompt rendering, and parsing of the model's thread report.
+
+- **Store**: in memory, keyed by group id and guarded by one lock. It
+  holds the current subject (topic label, energy 0-1, open point,
+  exchange count), the last `LLMChatter.Threads.HistorySize` finished
+  subjects, per-bot lingering feelings (visible for
+  `FeelingTurns` exchanges, across subject changes), recent
+  interruptions (`MaxInterruptions`), and pending exchanges. Each
+  group state has a session id and a major-event revision.
+- **Retention**: a state idle for `IdleTTLMinutes` expires on lookup,
+  the store is capped at `MaxGroups` (least recently used first), and
+  `check_idle_group_chatter()` calls `reconcile_active_groups()` with
+  the current `llm_group_bot_traits` group ids every tick, so a party
+  that ended through any path (last bot removed in C++, disband,
+  logout) is forgotten even while other players stay online.
+  `cleanup_stale_groups()` and `cleanup_all_session_data()` also
+  clear it.
+- **Planning**: `plan_idle_turn()` picks continue, drift, callback or
+  new, weighted by the subject's effective energy (exchange decay plus
+  cooling over `CoolMinutes` of silence) through the configurable
+  energy bands (`HighEnergyThreshold`, `LowEnergyThreshold`) and move
+  weights (`*EnergyMoveWeights`). With the defaults every move stays
+  possible at any energy. Fresh subjects come from persona, surroundings or the
+  topic pool (`*TopicWeight`; never the pool inside instances).
+  `SurpriseChance` adds an explicit allowance for believable
+  surprises. The rendered `<conversation_thread>` block calls itself
+  "a nudge, not a script", contains no example lines, and replaces the
+  random pool topic in both idle builders.
+- **Report**: idle prompts ask for an optional `thread` object: a
+  trailing field for single statements
+  (`append_json_instruction(extra_field=...)`) and a trailing array
+  element for conversations
+  (`append_conversation_json_instruction(trailing_object=...)`, which
+  `parse_conversation_response()` skips). The report is validated
+  (real JSON booleans only, known speakers only, clipped text). A
+  report without a usable topic never removes the current subject; it
+  only applies safe updates (feelings, decay). If only the trailing
+  report is malformed or cut off, `parse_conversation_response()`
+  still returns the complete dialogue before it; broken dialogue is
+  rejected as before. `ReportTokens` is added to the output budget.
+- **Delivery confirmation**: `insert_chat_message()` returns the row
+  id. `record_idle_exchange()` holds the parsed report against the
+  ids actually queued and their speakers (none queued: nothing
+  recorded). It is marked incomplete when any dialogue line the model
+  wrote was filtered before queueing (`count_conversation_items()`
+  versus queued rows). The next `plan_idle_turn(db=...)` or
+  `render_for_player_reply(group_id, db)` checks
+  `llm_chatter_messages`. A row counts as spoken only with
+  `delivered = 1`, `delivered_at IS NOT NULL` and
+  `drop_reason IS NULL`: C++ first claims a row (`delivered = 1`,
+  no `delivered_at`) and stamps `delivered_at` only after the send,
+  so claimed rows stay pending. When every row was spoken and the
+  exchange is complete, the report is adopted, timed by the actual
+  delivery (the database computes the age, so no timezone
+  conversion). With a partial or incomplete exchange the exchange
+  counts (decay) but the report is not adopted. When nothing was
+  spoken, or after `PendingTimeoutSeconds`, it is discarded; the
+  timeout also applies while the status lookup fails, and at most
+  `MaxPending` exchanges wait per party.
+- **Stale completions**: pending exchanges from an earlier session
+  (after a clear or re-creation) are ignored, and a report planned
+  before a wipe or death never overwrites the subject that event
+  set. `run_group_handler()` captures the group's thread session with
+  `capture_session()` before its LLM call and passes it to
+  `note_event()`, so an event completing after the group was cleared
+  or replaced is dropped. For a group with no thread yet,
+  `capture_session()` creates the session up front, so a first event
+  is guarded the same way and still starts the thread normally.
+- **Interruptions**: `run_group_handler()` calls `note_event()` after
+  storing a reaction, passing the reaction's `message_id` from
+  `run_single_reaction()`. The event is a fact at once; the reaction
+  line is quoted only after it was delivered. Minor events are shown
+  to the next idle exchange, so the subject can resume. `bot_group_wipe` and `bot_group_death`
+  take over as the subject and move the old one to history.
+  `process_group_player_msg_event()` calls `note_player_message()`,
+  and party replies get read-only context from
+  `render_for_player_reply()` (skipped for brief casual replies and
+  cold subjects).
+- **Anti-repetition**: for continue, drift and callback moves
+  (`IdleTurn.builds_on_subject`),
+  `build_anti_repetition_context(allow_same_subject=True)` still bans
+  repeated wording but allows developing the current or an earlier
+  subject.
+- Memory-recall idle exchanges keep their own focus: they neither see
+  nor consume the thread.
+
 ## System Prompt Architecture
 
 All prompt builders return a `PromptParts` object (defined in
@@ -857,6 +947,7 @@ This asymmetry is known and acceptable in the shipped source state.
 | `tools/chatter_links.py` | WoW link parsing and prompt-side link enrichment for player messages |
 | `tools/chatter_prompts.py` | Ambient/event prompt builders; twist and spice gating (`configure_prompt_flavor()`) |
 | `tools/chatter_persona.py` | Bot persona resolution (identity + real event mood) and the shared persona/cast renderers for Party, Guild and General |
+| `tools/chatter_threads.py` | Party conversation threads: in-memory thread store, soft nudges for idle exchanges, thread prompt rendering, thread report parsing |
 | `tools/chatter_general.py` | `player_general_msg` Python path |
 | `tools/chatter_memory.py` | Persistent memory system: session tracking, background memory generation via `queue_memory()`, flush/activate on farewell, orphan recovery. Key helpers: `_resolve_location()`, `_ensure_cap_and_insert()`, `_count_active_memories()`, `_evict_one_used()`. Memory prompts thread `player_name` so the LLM references the player by name (DB fallback from `player_guid` when caller doesn't supply it). Memories are one plain, factual sentence (target 160 characters); `_clamp_memory_text()` bounds them at write time (hard cap 240, cut at a sentence or word boundary), so prompts carry the stored memory whole instead of cutting it at 200 characters |
 | `tools/chatter_cache.py` | Mode-aware pre-cache refill and startup removal of ready rows generated under a previous mode |
@@ -1399,6 +1490,7 @@ source:
 | Shared group-handler pipeline behavior | `tools/chatter_handler_pipeline.py` |
 | Group prompt wording | `tools/chatter_group_prompts.py` |
 | Bot persona resolution, mood lookup, persona prompt wording | `tools/chatter_persona.py` |
+| Conversation continuity, subject changes, lingering feelings in party idle chatter | `tools/chatter_threads.py` |
 | Twist/spice frequency and wording | `tools/chatter_prompts.py` |
 | Group message insert behavior / preserve `emote: null` | `tools/chatter_group.py`, `tools/chatter_shared.py`, `tools/chatter_cache.py` |
 | General-channel Python behavior | `tools/chatter_general.py` |

@@ -2141,10 +2141,15 @@ def build_player_response_prompt(
     memories=None,
     travel_context="",
     brief_casual=False,
+    thread_context="",
 ):
     """Build prompt for a bot responding to a real
     player's party chat message. The bot should
     reply naturally and contextually.
+
+    thread_context: read-only conversation-thread note
+    (chatter_threads.render_for_player_reply); skipped
+    for brief casual replies.
     """
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
@@ -2314,10 +2319,15 @@ def build_player_response_prompt(
     prompt += f"{rp_context}\n\n"
     if link_context:
         prompt += f"{link_context}\n\n"
+    thread_note = (
+        f"{thread_context}\n\n"
+        if thread_context and not brief_casual else ""
+    )
     prompt += (
         f"You are in a party. {player_name} just "
         f"said in party chat:\n"
         f"\"{player_message}\"\n\n"
+        f"{thread_note}"
         f"{style}\n\n"
         f"Reply in party chat.\n"
         + (
@@ -4076,9 +4086,14 @@ def build_player_msg_conversation_prompt(
     target_talent_context=None,
     zone_id=0, area_id=0, map_id=0,
     brief_casual=False,
+    thread_context="",
 ):
     """Build prompt for a multi-bot conversation
     responding to a player's party chat message.
+
+    thread_context: read-only conversation-thread note
+    (chatter_threads.render_for_player_reply); skipped
+    for brief casual replies.
 
     Args:
         bots: list of bot dicts (name, class, race,
@@ -4132,6 +4147,8 @@ def build_player_msg_conversation_prompt(
         parts.append(link_context)
     if item_context:
         parts.append(item_context)
+    if thread_context and not brief_casual:
+        parts.append(thread_context)
 
     # Location context — dungeon takes priority
     dungeon_flav = get_dungeon_flavor(map_id)

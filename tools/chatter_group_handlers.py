@@ -65,6 +65,7 @@ from chatter_group_state import (
     get_bot_mood_label,
     update_bot_mood,
 )
+from chatter_threads import render_for_player_reply
 from chatter_group_prompts import (
     build_kill_reaction_prompt,
     build_loot_reaction_prompt,
@@ -2658,6 +2659,7 @@ def execute_player_msg_conversation(
         area_id=area_id,
         map_id=map_id,
         brief_casual=brief_casual,
+        thread_context=render_for_player_reply(group_id, db),
     )
 
     # Token budget: max_tokens * (1 + num_bots),

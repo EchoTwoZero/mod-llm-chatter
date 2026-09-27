@@ -47,6 +47,7 @@ from chatter_shared import (
     pick_random_max_tokens,
     get_dungeon_flavor, get_dungeon_bosses,
     parse_conversation_response,
+    count_conversation_items,
     calculate_dynamic_delay,
     find_addressed_bot,
     insert_chat_message,
@@ -106,6 +107,18 @@ from chatter_persona import (
     fallback_tone,
     persona_from_fields,
     without_backstory,
+)
+from chatter_threads import (
+    THREAD_REPORT_FIELD,
+    THREAD_REPORT_OBJECT,
+    THREAD_REPORT_RULE,
+    configure_threads,
+    note_player_message,
+    plan_idle_turn,
+    reconcile_active_groups,
+    record_idle_exchange,
+    render_for_player_reply,
+    report_tokens,
 )
 from chatter_group_state import (
     set_group_chat_history_limit,
@@ -240,8 +253,10 @@ def init_group_config(config):
     except (ValueError, TypeError):
         val = 10
     _chat_history_limit = max(1, min(val, 50))
-    # Spice/twist gating lives with its owner.
+    # Spice/twist gating and conversation threads
+    # live with their owners.
     configure_prompt_flavor(config)
+    configure_threads(config)
     # Keep shared group helper state in sync.
     set_group_chat_history_limit(_chat_history_limit)
 
@@ -1661,6 +1676,10 @@ def process_group_player_msg_event(
         _mark_event(db, event_id, 'skipped')
         return False
 
+    # The player's words join the conversation thread
+    # so the next idle exchange knows what was said.
+    note_player_message(group_id, player_name, player_message)
+
     # Parse and resolve WoW links in message
     # Keep raw message for detect_item_links
     raw_player_message = player_message
@@ -1984,6 +2003,9 @@ def process_group_player_msg_event(
             travel_context=travel_context,
             brief_casual=brief_casual,
             allow_action=not brief_casual,
+            thread_context=render_for_player_reply(
+                group_id, db
+            ),
         )
 
         max_tokens = pick_random_max_tokens(config)
@@ -2385,6 +2407,7 @@ def _try_second_bot_response(
         map_id=map_id,
         stored_tone=bot2_tone,
         travel_context=bot2_travel_context,
+        thread_context=render_for_player_reply(group_id, db),
     )
 
     max_tokens = int(config.get(
@@ -2875,6 +2898,23 @@ def get_recent_weather(db, zone_id):
 # Track last idle chatter per group
 _last_idle_chatter = {}
 _idle_inflight = set()
+
+
+def _in_instance(map_id):
+    """True inside a dungeon or battleground map."""
+    return (
+        get_dungeon_flavor(map_id) is not None
+        or map_id in BG_MAP_NAMES
+    )
+
+
+def _ambient_topic_pool(mode):
+    """Random subject pool for idle party chatter."""
+    return (
+        AMBIENT_CHAT_TOPICS_RP
+        if mode == 'roleplay'
+        else AMBIENT_CHAT_TOPICS
+    )
 _last_idle_chatter_lock = threading.Lock()
 
 
@@ -2895,6 +2935,7 @@ def build_idle_chatter_prompt(
     backstory=None,
     travel_context='',
     persona=None,
+    thread_turn=None,
 ):
     """Build prompt for idle party chat.
 
@@ -2911,6 +2952,10 @@ def build_idle_chatter_prompt(
         map_id: for dungeon flavor
         persona: resolved Persona; built from traits,
             stored_tone and backstory when omitted
+        thread_turn: chatter_threads.IdleTurn for this
+            exchange; adds the thread context and asks
+            for the optional thread report (normal path
+            only; the memory path keeps its own focus)
     """
     is_rp = (mode == 'roleplay')
     if persona is None:
@@ -3047,7 +3092,11 @@ def build_idle_chatter_prompt(
     dungeon_flav_early = get_dungeon_flavor(map_id)
     in_dungeon_early = dungeon_flav_early is not None
     in_bg_early = map_id in BG_MAP_NAMES
-    if in_dungeon_early or in_bg_early:
+    if thread_turn is not None:
+        # The conversation thread carries the subject
+        # (including any rare pool topic) instead.
+        topic = None
+    elif in_dungeon_early or in_bg_early:
         topic = None  # instance/BG context drives tone
     else:
         topic_pool = (
@@ -3209,19 +3258,32 @@ def build_idle_chatter_prompt(
         if topic else
         "You're in a party."
     )
+    continuing = bool(
+        thread_turn and thread_turn.builds_on_subject
+    )
+    repeat_rule = (
+        "- Don't repeat jokes or wording already used in "
+        "chat; building on the current or an earlier "
+        "subject is fine\n"
+        if continuing else
+        "- Don't repeat jokes or themes already said in chat\n"
+    )
+    thread_block = (
+        f"{thread_turn.prompt_block}\n\n" if thread_turn else ""
+    )
     prompt += (
         f"{rp_context}\n\n"
         f"{party_ctx}\n"
         f"{address_hint}\n"
         f"{style}\n\n"
+        f"{thread_block}"
         f"Say something casual in party chat.\n"
         f"{_pick_length_hint(mode)}\n"
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Reflect your personality traits\n"
         f"- Just a natural idle comment\n"
-        f"- Don't repeat jokes or themes "
-        f"already said in chat\n"
+        f"{repeat_rule}"
         f"- NEVER claim to have killed a creature, "
         f"looted an item, completed a quest, "
         f"or made a trade\n"
@@ -3234,10 +3296,16 @@ def build_idle_chatter_prompt(
     if spice_line:
         prompt += f"\n{spice_line}"
     anti_rep = build_anti_repetition_context(
-        recent_messages
+        recent_messages, allow_same_subject=continuing,
     )
     if anti_rep:
         prompt += f"\n{anti_rep}"
+    if thread_turn is not None:
+        return append_json_instruction(
+            prompt, allow_action,
+            extra_field=THREAD_REPORT_FIELD,
+            extra_rule=THREAD_REPORT_RULE,
+        )
     return append_json_instruction(
         prompt, allow_action
     )
@@ -3257,6 +3325,7 @@ def build_idle_conversation_prompt(
     memories_map=None,
     backstory_map=None,
     personas=None,
+    thread_turn=None,
 ):
     """Build prompt for a multi-bot idle conversation.
 
@@ -3280,6 +3349,9 @@ def build_idle_conversation_prompt(
         personas: dict bot name -> Persona; built from
             traits_map, each bot's 'tone' and
             backstory_map when omitted
+        thread_turn: chatter_threads.IdleTurn; adds the
+            thread context and asks for the optional
+            trailing thread report (normal path only)
     """
     is_rp = (mode == 'roleplay')
     num_bots = len(bots)
@@ -3644,6 +3716,11 @@ def build_idle_conversation_prompt(
     # already grounds the conversation)
     if topic:
         parts.append(f"Topic: {topic}")
+    continuing = bool(
+        thread_turn and thread_turn.builds_on_subject
+    )
+    if thread_turn is not None:
+        parts.append(thread_turn.prompt_block)
 
     twist = maybe_get_creative_twist(mode=mode)
     if twist:
@@ -3721,8 +3798,14 @@ def build_idle_conversation_prompt(
         "or made a trade. "
         "Stick to observation, opinion, banter, "
         "occasional philosophical consideration. "
-        "Don't repeat jokes or themes already "
-        "said in chat."
+        + (
+            "Don't repeat jokes or wording already used "
+            "in chat; building on the current or an "
+            "earlier subject is fine."
+            if continuing else
+            "Don't repeat jokes or themes already "
+            "said in chat."
+        )
     )
     parts.append(
         "STRICT: Each message MUST be under "
@@ -3736,11 +3819,20 @@ def build_idle_conversation_prompt(
         parts.append(spice_line)
 
     anti_rep = build_anti_repetition_context(
-        recent_messages
+        recent_messages, allow_same_subject=continuing,
     )
     if anti_rep:
         parts.append(anti_rep)
 
+    if thread_turn is not None:
+        return append_conversation_json_instruction(
+            '\n'.join(parts),
+            bot_names,
+            msg_count,
+            allow_action=allow_action,
+            trailing_object=THREAD_REPORT_OBJECT,
+            extra_rule=THREAD_REPORT_RULE,
+        )
     return append_conversation_json_instruction(
         '\n'.join(parts),
         bot_names,
@@ -3778,6 +3870,9 @@ def check_idle_group_chatter(
         FROM llm_group_bot_traits
     """)
     groups = cursor.fetchall()
+    # Forget conversation threads of parties that ended
+    # through any path (last bot removed, disband, logout).
+    reconcile_active_groups(g['group_id'] for g in groups)
 
     if not groups:
         return False
@@ -4245,6 +4340,18 @@ def _idle_single_statement(
         if random.random() < idle_chance:
             idle_backstory = bot_row.get('backstory')
 
+    # Conversation thread for this exchange. Memory
+    # recalls keep their own focus, so they neither
+    # see nor consume the thread.
+    thread_turn = None
+    if not idle_memories:
+        thread_turn = plan_idle_turn(
+            group_id, [bot_name],
+            in_instance=_in_instance(map_id),
+            topic_pool=_ambient_topic_pool(mode),
+            db=db,
+        )
+
     try:
         speaker_talent = _maybe_talent_context(
             config, db, bot_guid,
@@ -4267,6 +4374,7 @@ def _idle_single_statement(
             memories=idle_memories,
             backstory=idle_backstory,
             travel_context=travel_context,
+            thread_turn=thread_turn,
         )
 
         _dflav = get_dungeon_flavor(map_id)
@@ -4314,6 +4422,11 @@ def _idle_single_statement(
         # Memory allusions need room — lift floor
         if idle_memories:
             max_tokens = max(max_tokens, 250)
+        if thread_turn is not None:
+            # Room for the trailing thread report so it
+            # never truncates the message itself.
+            max_tokens += report_tokens()
+            zone_meta['thread_move'] = thread_turn.kind
         _idle_label = (
             'group_idle_memory'
             if idle_memories else 'group_idle'
@@ -4343,7 +4456,7 @@ def _idle_single_statement(
 
         # Insert directly into messages table
         emote = parsed.get('emote')
-        insert_chat_message(
+        message_id = insert_chat_message(
             db, bot_guid, bot_name, message,
             channel='party', delay_seconds=2,
             event_id=None, emote=emote,
@@ -4356,6 +4469,10 @@ def _idle_single_statement(
         _store_chat(
             db, group_id, bot_guid,
             bot_name, True, message
+        )
+        # Adopted into the thread only once delivered.
+        record_idle_exchange(
+            thread_turn, response, [bot_name], [message_id],
         )
 
         with _last_idle_chatter_lock:
@@ -4535,6 +4652,20 @@ def _idle_conversation(
                                 b['guid']
                             ] = mems
 
+    # Conversation thread for this exchange; it
+    # replaces the random pool topic. Memory
+    # exchanges keep their own focus.
+    thread_turn = None
+    if not memories_map:
+        thread_turn = plan_idle_turn(
+            group_id, bot_names,
+            in_instance=_in_instance(map_id),
+            topic_pool=_ambient_topic_pool(mode),
+            db=db,
+        )
+        if thread_turn is not None:
+            topic = None
+
     # RNG-gate backstory injection per bot
     conv_backstory_map = None
     backstory_enabled = int(config.get(
@@ -4603,6 +4734,7 @@ def _idle_conversation(
             memories_map=memories_map or None,
             backstory_map=conv_backstory_map,
             allow_action=allow_action,
+            thread_turn=thread_turn,
         )
         logger.info(
             "[IDLE] prompt snippet: %r",
@@ -4616,6 +4748,9 @@ def _idle_conversation(
         conv_tokens = min(
             max_tokens * (1 + num_bots), 1000
         )
+        if thread_turn is not None:
+            conv_tokens += report_tokens()
+            zone_meta['thread_move'] = thread_turn.kind
         if speaker_talent:
             zone_meta['speaker_talent'] = (
                 speaker_talent
@@ -4664,6 +4799,8 @@ def _idle_conversation(
         # Insert messages with staggered delivery
         cumulative_delay = 2.0
         prev_len = 0
+        queued_ids = []
+        queued_speakers = []
 
         for seq, msg in enumerate(messages):
             msg_text = msg['message']
@@ -4697,7 +4834,7 @@ def _idle_conversation(
                 )
                 cumulative_delay += delay
 
-            insert_chat_message(
+            queued_ids.append(insert_chat_message(
                 db, speaker_guid, msg['name'],
                 text, channel='party',
                 delay_seconds=int(cumulative_delay),
@@ -4707,7 +4844,8 @@ def _idle_conversation(
                 group_id=group_id,
                 delivery_policy='filler',
                 delivery_reason='group_idle_conv',
-            )
+            ))
+            queued_speakers.append(msg['name'])
 
             _store_chat(
                 db, group_id, speaker_guid,
@@ -4715,6 +4853,18 @@ def _idle_conversation(
             )
 
             prev_len = len(text)
+
+        # Adopted into the thread only once every queued
+        # line was delivered, and only if no line the
+        # model wrote was filtered out before queueing.
+        record_idle_exchange(
+            thread_turn, response,
+            sorted(set(queued_speakers)), queued_ids,
+            complete=(
+                len(queued_ids)
+                == count_conversation_items(response)
+            ),
+        )
 
         with _last_idle_chatter_lock:
             _last_idle_chatter[group_id] = now

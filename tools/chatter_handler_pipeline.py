@@ -37,6 +37,7 @@ from chatter_group_state import (
     update_bot_mood,
 )
 from chatter_persona import format_mood_line, resolve_mood
+from chatter_threads import capture_session, note_event
 from chatter_raid_base import dual_worker_dispatch
 
 logger = logging.getLogger(__name__)
@@ -183,6 +184,9 @@ def run_group_handler(
     trait_data = get_bot_traits(
         db, group_id, bot_guid,
     )
+    # Thread session before the slow LLM call, so a
+    # cleanup during the wait cannot be undone later.
+    thread_session = capture_session(group_id)
 
     # 7. BG fallback if no traits
     if not trait_data and bg_fallback_prompt:
@@ -347,6 +351,13 @@ def run_group_handler(
         _store_chat(
             db, group_id, bot_guid,
             bot_name, True, message,
+        )
+        # The reaction interrupts (or, for a wipe or
+        # death, takes over) the conversation thread.
+        note_event(
+            group_id, event_type_label, bot_name, message,
+            message_id=result.get('message_id'),
+            session=thread_session,
         )
 
         # 15. Update mood

@@ -3193,6 +3193,158 @@ LLMChatter.Persona.SpiceChance = 30
 LLMChatter.PersonalitySpiceCount = 2
 
 ###############################################################################
+# CONVERSATION THREADS (party idle chatter)
+###############################################################################
+#
+#   Party idle chatter follows a conversation thread instead of a fresh
+#   random topic each time: subjects develop over a few exchanges, drift,
+#   get called back later, and feelings linger after the subject changes.
+#   The model reports the thread state in the same call (no extra calls).
+#   Each exchange gets a soft nudge the model may ignore, never a script.
+#   State lives in bridge memory for the group session.
+
+#
+#   LLMChatter.Threads.Enable [BRIDGE]
+#       1 = party idle chatter follows conversation threads.
+#       0 = previous behaviour (random topic per exchange).
+#       Default: 1
+#
+LLMChatter.Threads.Enable = 1
+
+#
+#   LLMChatter.Threads.HistorySize [BRIDGE]
+#       How many finished subjects a party remembers for callbacks
+#       ("about what you said earlier"). Range 1-10.
+#       Default: 5
+#
+LLMChatter.Threads.HistorySize = 5
+
+#
+#   LLMChatter.Threads.ExchangeDecay [BRIDGE]
+#       Percent (10-95) of a subject's remaining energy kept after each
+#       exchange when the model does not report it. Higher = stickier
+#       subjects.
+#       Default: 70
+#
+LLMChatter.Threads.ExchangeDecay = 70
+
+#
+#   LLMChatter.Threads.CoolMinutes [BRIDGE]
+#       Minutes of silence that halve a subject's energy (1-240), so an
+#       old subject is not picked up as if no time had passed.
+#       Default: 15
+#
+LLMChatter.Threads.CoolMinutes = 15
+
+#
+#   LLMChatter.Threads.FeelingTurns [BRIDGE]
+#       How many following exchanges a bot's lingering feeling stays in
+#       the prompt (1-10).
+#       Default: 3
+#
+LLMChatter.Threads.FeelingTurns = 3
+
+#
+#   LLMChatter.Threads.PersonaTopicWeight [BRIDGE]
+#   LLMChatter.Threads.SurroundingsTopicWeight [BRIDGE]
+#   LLMChatter.Threads.PoolTopicWeight [BRIDGE]
+#       Relative weights (0-100) for where a fresh subject comes from:
+#       something a bot personally cares about (traits, backstory,
+#       race/class), the surroundings, or the random topic pool. The
+#       pool is never used inside dungeons or battlegrounds.
+#       Defaults: 60 / 30 / 10
+#
+LLMChatter.Threads.PersonaTopicWeight = 60
+LLMChatter.Threads.SurroundingsTopicWeight = 30
+LLMChatter.Threads.PoolTopicWeight = 10
+
+#
+#   LLMChatter.Threads.SurpriseChance [BRIDGE]
+#       Percent chance (0-100) that an exchange explicitly allows a
+#       believable surprise: a bot changing its mind, going off on a
+#       tangent, revealing something or taking an unexpected stance.
+#       Default: 12
+#
+LLMChatter.Threads.SurpriseChance = 12
+
+#
+#   LLMChatter.Threads.HighEnergyThreshold [BRIDGE]
+#   LLMChatter.Threads.LowEnergyThreshold [BRIDGE]
+#       Energy bands (percent) that pick which move weights apply to
+#       the current subject: at or above High uses HighEnergyMoveWeights,
+#       at or above Low uses MidEnergyMoveWeights, below uses
+#       LowEnergyMoveWeights. Low must be below High.
+#       Defaults: 60 / 30
+#
+LLMChatter.Threads.HighEnergyThreshold = 60
+LLMChatter.Threads.LowEnergyThreshold = 30
+
+#
+#   LLMChatter.Threads.HighEnergyMoveWeights [BRIDGE]
+#   LLMChatter.Threads.MidEnergyMoveWeights [BRIDGE]
+#   LLMChatter.Threads.LowEnergyMoveWeights [BRIDGE]
+#       Relative weights "continue,drift,callback,new" (four numbers,
+#       0-100 each, not all zero) for the soft nudge in each energy
+#       band. Callback weight moves to "new" while no earlier subject
+#       exists. Invalid values fall back to the defaults.
+#       Defaults: 70,20,5,5 / 35,35,15,15 / 10,25,25,40
+#
+LLMChatter.Threads.HighEnergyMoveWeights = 70,20,5,5
+LLMChatter.Threads.MidEnergyMoveWeights = 35,35,15,15
+LLMChatter.Threads.LowEnergyMoveWeights = 10,25,25,40
+
+#
+#   LLMChatter.Threads.PendingTimeoutSeconds [BRIDGE]
+#       An idle exchange only becomes part of the thread once every line
+#       it queued was actually sent in game. Lines still unsent after
+#       this many seconds (30-3600) count as dropped, even if the
+#       delivery status cannot be read.
+#       Default: 300
+#
+LLMChatter.Threads.PendingTimeoutSeconds = 300
+
+#
+#   LLMChatter.Threads.MaxPending [BRIDGE]
+#       Maximum unconfirmed idle exchanges held per party (1-50); the
+#       oldest is discarded first.
+#       Default: 6
+#
+LLMChatter.Threads.MaxPending = 6
+
+#
+#   LLMChatter.Threads.IdleTTLMinutes [BRIDGE]
+#       Minutes without any activity after which a party's threads are
+#       forgotten (10-1440). Ended parties are also forgotten on the next
+#       idle tick.
+#       Default: 180
+#
+LLMChatter.Threads.IdleTTLMinutes = 180
+
+#
+#   LLMChatter.Threads.MaxGroups [BRIDGE]
+#       Maximum parties kept in thread memory (1-5000); the least
+#       recently active party is dropped first.
+#       Default: 200
+#
+LLMChatter.Threads.MaxGroups = 200
+
+#
+#   LLMChatter.Threads.MaxInterruptions [BRIDGE]
+#       How many recent player lines and events (1-10) the next idle
+#       exchange is told about.
+#       Default: 4
+#
+LLMChatter.Threads.MaxInterruptions = 4
+
+#
+#   LLMChatter.Threads.ReportTokens [BRIDGE]
+#       Extra output tokens (40-400) reserved for the model's thread
+#       report so it never truncates the chat line before it.
+#       Default: 90
+#
+LLMChatter.Threads.ReportTokens = 90
+
+###############################################################################
 # EMOTE REACTION SYSTEM
 ###############################################################################
 
