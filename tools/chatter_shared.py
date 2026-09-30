@@ -22,7 +22,7 @@ from chatter_constants import (
     CLASS_NAMES, RACE_NAMES,
     RACE_SPEECH_PROFILES, CLASS_SPEECH_MODIFIERS,
     CLASS_ROLE_MAP, ROLE_COMBAT_PERSPECTIVES,
-    ZONE_FLAVOR, DUNGEON_FLAVOR,
+    ZONE_FLAVOR, DUNGEON_FLAVOR, OPEN_AIR_INSTANCES,
     ITEM_QUALITY_COLORS, ITEM_QUALITY_NAMES,
     ITEM_CLASS_NAMES, WEAPON_SUBCLASS_NAMES,
     ARMOR_SUBCLASS_NAMES, CLASS_BITMASK,
@@ -1121,6 +1121,15 @@ def get_dungeon_flavor(map_id: int) -> Optional[str]:
     return DUNGEON_FLAVOR.get(map_id)
 
 
+def instance_has_sky(map_id: int = 0, map_name: str = '') -> bool:
+    """True when an instance is fought under the open sky, so time
+    of day, season and weather belong in its prompts. Raid events
+    only carry a map name, so either key is accepted."""
+    if map_id and map_id in OPEN_AIR_INSTANCES:
+        return True
+    return bool(map_name) and map_name in OPEN_AIR_INSTANCES.values()
+
+
 def get_group_area(db, group_id: int) -> int:
     """Get the current area (subzone) for a group.
 
@@ -1403,7 +1412,7 @@ def replace_placeholders(
     result = message
 
     if quest_data:
-        quest_pattern = r'\{quest:[^}]+\}'
+        quest_pattern = r'\{?\{quest:[^}]+\}\}?'
         if re.search(quest_pattern, result):
             link = format_quest_link(
                 quest_data['quest_id'],
@@ -1413,7 +1422,7 @@ def replace_placeholders(
             result = re.sub(quest_pattern, link, result)
 
     if item_data:
-        item_pattern = r'\{item:[^}]+\}'
+        item_pattern = r'\{?\{item:[^}]+\}\}?'
         link = format_item_link(
             item_data['item_id'],
             item_data.get('item_quality', 2),
@@ -1429,7 +1438,7 @@ def replace_placeholders(
                 )
 
     if spell_data:
-        spell_pattern = r'\{spell:[^}]+\}'
+        spell_pattern = r'\{?\{spell:[^}]+\}\}?'
         if re.search(spell_pattern, result):
             link = format_spell_link(
                 spell_data['spell_id'],
@@ -1703,6 +1712,8 @@ def append_json_instruction(
     message_only: bool = False,
     allow_emote_only: bool = False,
     allow_narrator_message: bool = False,
+    extra_field: str = '',
+    extra_rule: str = '',
 ) -> str:
     """Append structured JSON response instruction
     to a prompt.
@@ -1717,6 +1728,8 @@ def append_json_instruction(
     instead (used by General conversation paths).
     message_only=True emits a strict {"message": "..."} schema with no
     emote/action fields at all (e.g. guild chat, which is spoken text only).
+    extra_field / extra_rule add one optional trailing field to the
+    full schema (e.g. the party conversation-thread report).
     """
     if message_only:
         lang_rule = get_language_rule()
@@ -1733,12 +1746,18 @@ def append_json_instruction(
             if allow_narrator_message
             else ""
         )
+        if extra_field:
+            message_example = (
+                message_example.rstrip('\n') + ',\n'
+                + f'  {extra_field}\n'
+            )
         block = (
             "\n\nRESPONSE FORMAT: You MUST respond with "
             "ONLY valid JSON. No other text.\n"
             "{\n"
             f"{message_example}"
             "}\n"
+            f"{extra_rule + chr(10) if extra_rule else ''}"
             "Rules: double quotes only, no trailing "
             "commas, no code fences, no markdown.\n"
             f"{narrator_rule}"
@@ -1815,8 +1834,10 @@ def append_json_instruction(
         f"{message_line}"
         f"{emote_line}"
         f"  {action_desc}"
+        f"{f'  {extra_field}' + chr(10) if extra_field else ''}"
         "}\n"
         f"{emote_only_rule}"
+        f"{extra_rule + chr(10) if extra_rule else ''}"
         "Rules: double quotes only, no trailing "
         "commas, no code fences, no markdown.\n"
         "CRITICAL: Follow the Length instruction "
@@ -1836,12 +1857,18 @@ def append_conversation_json_instruction(
     addressee_names: Optional[List[str]] = None,
     allow_emote_only: bool = False,
     allow_narrator_messages: bool = False,
+    trailing_object: str = '',
+    extra_rule: str = '',
 ) -> str:
     """Append conversation JSON array instruction.
 
     By default each item has speaker/message/emote/action
     fields. Guild chat uses message_only to request spoken
-    text without action or emote fields.
+    text without action or emote fields. trailing_object /
+    extra_rule add one optional non-message object as the last
+    array element (e.g. the party conversation-thread report);
+    parse_conversation_response() skips it because it has no
+    speaker.
     """
     lang_rule = get_language_rule()
     if lang_rule:
@@ -1873,12 +1900,17 @@ def append_conversation_json_instruction(
             "quotes/newlines, no trailing commas, "
             "no code fences.\n"
             f"\nRespond with EXACTLY {msg_count} messages "
-            "in JSON:\n"
+            "in JSON"
+            f"{', then one final object' if trailing_object else ''}"
+            ":\n"
             "[\n"
-            f"  {example_msgs}\n"
+            f"  {example_msgs}"
+            f"{f',{chr(10)}  {trailing_object}' if trailing_object else ''}"
+            "\n"
             "]\n"
-            "Each object must contain only \"speaker\" "
+            "Each message object must contain only \"speaker\" "
             "and \"message\".\n"
+            f"{extra_rule + chr(10) if extra_rule else ''}"
             f"{narrator_rule}"
             "ONLY the JSON array, nothing else.\n"
             "CRITICAL: Follow the Length instruction "
@@ -1986,10 +2018,13 @@ def append_conversation_json_instruction(
         f"{emote_only_rule}"
         "JSON rules: Use double quotes, escape "
         "quotes/newlines, no trailing commas, no code fences.\n"
-        f"\nRespond with EXACTLY {msg_count} messages in JSON:\n"
+        f"\nRespond with EXACTLY {msg_count} messages in JSON"
+        f"{', then one final object' if trailing_object else ''}:\n"
         "[\n"
-        f"  {example_msgs}\n"
+        f"  {example_msgs}"
+        f"{f',{chr(10)}  {trailing_object}' if trailing_object else ''}\n"
         "]\n"
+        f"{extra_rule + chr(10) if extra_rule else ''}"
         "ONLY the JSON array, nothing else.\n"
         "CRITICAL: Follow the Length instruction "
         "in the prompt exactly — never exceed the "
@@ -2277,7 +2312,7 @@ def run_single_reaction(
     emote = parsed.get('emote')
 
     try:
-        insert_chat_message(
+        message_id = insert_chat_message(
             db,
             bot_guid,
             speaker_name,
@@ -2310,6 +2345,7 @@ def run_single_reaction(
         'message': message,
         'emote': emote,
         'delay_seconds': resolved_delay,
+        'message_id': message_id,
         'error_reason': None,
     }
 
@@ -2455,14 +2491,17 @@ def find_addressed_bot(
         f"Judge meaning and conversational function, not "
         f"keywords or message length alone. A concise but "
         f"substantive question is not brief casual talk.\n"
-        f'- "requires_reply": true for every question, request, '
-        f"instruction, warning, important piece of information, "
-        f"greeting that invites engagement, or any turn that "
-        f"expects acknowledgment. Questions always require a reply. "
-        f"For statements, judge their meaning and conversational "
-        f"context: use false only when leaving the statement "
-        f"unanswered would feel socially natural. Do not decide "
-        f"from keywords, punctuation, or message length alone."
+        f'- "requires_reply": false ONLY for throwaway filler '
+        f"that friends would naturally leave unanswered: bare "
+        f"laughter or reactions, stepping-away or status notes, "
+        f"bare acknowledgements, or a sign-off after the "
+        f"exchange has already wound down. Everything else is "
+        f"true: every question, request, instruction, warning, "
+        f"piece of news, greeting, and any statement that shares "
+        f"an opinion, feeling, enthusiasm, complaint or "
+        f"experience, because it invites others to respond. "
+        f"Questions always require a reply. Judge meaning and conversational context, not "
+        f"keywords, punctuation, or message length alone."
     )
 
     try:
@@ -2663,6 +2702,69 @@ def _resolve_conversation_speaker(
     return None
 
 
+_THREAD_TAIL_RE = re.compile(r'\s*\{\s*"thread"')
+
+
+def _conversation_array_items(cleaned: str):
+    """Decode a conversation JSON array.
+
+    Returns the list, or None when no usable array exists. If the
+    full array does not decode, complete leading objects are kept
+    only when what failed is a trailing ``thread`` bookkeeping
+    element (or the array simply ends); broken dialogue is still
+    rejected as before.
+    """
+    start = cleaned.find('[')
+    if start == -1:
+        return None
+    end = cleaned.rfind(']')
+    if end > start:
+        try:
+            data = json.loads(cleaned[start:end + 1])
+            return data if isinstance(data, list) else None
+        except json.JSONDecodeError:
+            pass
+    decoder = json.JSONDecoder()
+    items = []
+    pos = start + 1
+    size = len(cleaned)
+    while pos < size:
+        while pos < size and (
+            cleaned[pos].isspace() or cleaned[pos] == ','
+        ):
+            pos += 1
+        if pos >= size or cleaned[pos] == ']':
+            return items or None
+        if cleaned[pos] != '{':
+            break
+        try:
+            obj, pos = decoder.raw_decode(cleaned, pos)
+        except ValueError:
+            break
+        items.append(obj)
+    tail = cleaned[pos:]
+    if items and (not tail.strip() or _THREAD_TAIL_RE.match(tail)):
+        return items
+    return None
+
+
+def count_conversation_items(response: str) -> int:
+    """Count the dialogue objects (with a speaker) the model sent.
+
+    Lets callers tell whether every line the model wrote survived
+    parsing and filtering. Returns 0 when nothing decodes.
+    """
+    cleaned = re.sub(
+        r'```(?:json)?', '', (response or '').strip(),
+        flags=re.IGNORECASE,
+    ).strip()
+    items = _conversation_array_items(cleaned) or []
+    return sum(
+        1 for item in items
+        if isinstance(item, dict) and 'speaker' in item
+    )
+
+
 def parse_conversation_response(
     response: str,
     bot_names: List[str],
@@ -2671,30 +2773,27 @@ def parse_conversation_response(
     addressee_names: Optional[List[str]] = None,
     allow_emote_only: bool = False,
 ) -> list:
-    """Parse conversation JSON response into message list."""
+    """Parse conversation JSON response into message list.
+
+    Non-object elements and speakerless objects (such as the
+    trailing party ``thread`` report) are skipped. When only an
+    optional trailing ``thread`` element is malformed or cut off,
+    the complete dialogue objects before it are still returned.
+    """
     try:
-        cleaned = response.strip()
+        cleaned = (response or '').strip()
         cleaned = re.sub(
             r'```(?:json)?', '', cleaned,
             flags=re.IGNORECASE
         ).strip()
-        json_match = re.search(r'\[.*\]', cleaned, re.DOTALL)
-        if json_match:
-            try:
-                messages = json.loads(json_match.group())
-            except json.JSONDecodeError:
-                start = cleaned.find('[')
-                end = cleaned.rfind(']')
-                if start != -1 and end != -1 and end > start:
-                    messages = json.loads(
-                        cleaned[start:end + 1]
-                    )
-                else:
-                    raise
+        messages = _conversation_array_items(cleaned)
+        if messages is not None:
             result = []
             for msg in messages:
-                speaker = msg.get('speaker', '').strip()
-                message = msg.get('message', '').strip()
+                if not isinstance(msg, dict):
+                    continue
+                speaker = str(msg.get('speaker') or '').strip()
+                message = str(msg.get('message') or '').strip()
                 raw_emote = msg.get('emote')
                 emote = validate_emote(raw_emote)
                 if speaker and (
@@ -2891,11 +2990,14 @@ def format_item_context(
 # =============================================================================
 def build_anti_repetition_context(
     recent_messages: list,
-    max_items: int = 10
+    max_items: int = 10,
+    allow_same_subject: bool = False,
 ) -> str:
     """Format recent messages as an anti-repetition
     prompt injection block.
 
+    allow_same_subject=True keeps the ban on repeated wording but
+    lets an ongoing conversation keep developing its subject.
     Returns empty string if no recent messages.
     """
     if not recent_messages:
@@ -2930,8 +3032,14 @@ def build_anti_repetition_context(
     return (
         "ANTI-REPETITION: These messages were recently "
         "said in this area. You MUST NOT repeat or "
-        "closely paraphrase ANY of them. Say something "
-        "completely different.\n"
+        "closely paraphrase ANY of them. "
+        + (
+            "Developing the same subject with a new point "
+            "is fine.\n"
+            if allow_same_subject
+            else "Say something completely different.\n"
+        )
+        +
         f"{lines}"
         f"{lang_note}"
     )

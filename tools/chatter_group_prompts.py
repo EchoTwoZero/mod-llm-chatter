@@ -8,6 +8,7 @@ from chatter_shared import (
     get_zone_name,
     get_subzone_lore,
     get_dungeon_flavor,
+    instance_has_sky,
     get_dungeon_bosses,
     build_race_class_context,
     build_race_class_context_parts,
@@ -22,12 +23,20 @@ from chatter_shared import (
     append_speaker_gear,
 )
 from chatter_prompts import (
-    pick_random_tone,
     maybe_get_creative_twist,
-    pick_personality_spices,
-    generate_conversation_mood_sequence,
+    maybe_pick_personality_spices,
+    format_spices_line,
     generate_conversation_length_sequence,
     build_environmental_context_lines,
+    TWIST_LABEL,
+    TWIST_LABEL_CONVERSATION,
+)
+from chatter_persona import (
+    build_cast_lines,
+    fallback_tone,
+    format_backstory_block,
+    format_mood_line,
+    persona_from_fields,
 )
 from chatter_constants import (
     RACE_SPEECH_PROFILES,
@@ -45,16 +54,6 @@ from chatter_mode import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Keep in sync from chatter_group.init_group_config
-_spice_count = 2
-
-
-def set_prompt_spice_count(value: int):
-    """Set spice count used by moved prompt builders."""
-    global _spice_count
-    _spice_count = max(0, min(int(value), 5))
-
 
 def _enemy_name_rule(pvp, pvp_named, creature_word):
     """Rules line about naming the enemy. A PvP enemy
@@ -92,23 +91,91 @@ def _maybe_humor_hint(mode):
         if is_rp:
             return (
                 "A touch of wry or dry humor "
-                "fits here"
+                "fits here, if it suits the "
+                "speaker's personality"
             )
-        return "A touch of humor fits here"
+        return (
+            "A touch of humor fits here, if it "
+            "suits the speaker's personality"
+        )
     return None
 
 
-def _append_bots_with_rp(parts, bots, traits_map, is_rp):
+def _speaker_tone(stored_tone, speaker, mode):
+    """Stored tone, else the speaker's stable fallback.
+
+    Seeded by the speaker's identity so the same bot
+    sounds the same in every builder and channel.
+    """
+    return stored_tone or fallback_tone(
+        speaker.get('guid'), speaker.get('name'), mode
+    )
+
+
+def _precache_target_rules(mode, fight_ongoing=True):
+    """Shared rules for cached lines that use {target}.
+
+    {target} is filled in later with a creature name, which may
+    be a proper name (Hogger) or a beast, so it is written bare
+    and never gendered. Cached lines play mid-fight, so none may
+    claim the enemy is already dead.
+    """
+    rules = (
+        "- Write {target} bare: never 'the {target}', and "
+        "never guess its gender (use it or its name)\n"
+    )
+    if fight_ongoing:
+        rules += (
+            "- The fight is still on: never say {target} "
+            "has fallen or is dead\n"
+        )
+    if mode == 'roleplay':
+        rules += (
+            "- No game-role jargon (tank, aggro, threat, "
+            "DPS) - say it as a person would\n"
+        )
+    return rules
+
+
+def _precache_mood_line(mood):
+    """Render a pre-cache mood label as colour, never tone.
+
+    The cache passes the raw event mood label, including
+    'neutral'; neutral or empty renders nothing.
+    """
+    if not mood or mood == 'neutral':
+        return ''
+    return f"\n{format_mood_line(mood)}"
+
+
+def _append_bots_with_rp(
+    parts, bots, traits_map, is_rp, personas=None,
+):
     """Append bot header lines + race/class RP context
-    for a multi-bot list.
+    for a multi-bot list, then every speaker's persona.
 
     Shared race content (worldview, lore) is emitted
     once per unique race. Shared class content (role
     perspective) is emitted once per unique class.
-    Per-bot content (traits, class modifier, vocab)
-    is emitted for every bot. Header and RP context
-    are kept together per bot to preserve association.
+    Per-bot content (class modifier, vocab) is emitted
+    for every bot. Header and RP context are kept
+    together per bot to preserve association.
+
+    personas: optional dict bot name -> Persona. When
+    omitted, each persona is built from traits_map and
+    the bot dict's stored 'tone' (never a random roll).
     """
+    mode = 'roleplay' if is_rp else 'normal'
+    if personas is None:
+        personas = {
+            b['name']: persona_from_fields(
+                b['name'], mode, b.get('guid', 0),
+                traits=(traits_map or {}).get(b['name']),
+                tone=b.get('tone'),
+                backstory=b.get('backstory'),
+            )
+            for b in bots
+        }
     shared_race_cache = {}
     if not is_rp:
         parts.append(
@@ -130,13 +197,10 @@ def _append_bots_with_rp(parts, bots, traits_map, is_rp):
     seen_races = set()
     seen_classes = set()
     for bot in bots:
-        t = traits_map.get(bot['name'], [])
-        trait_str = ', '.join(t) if t else 'average'
         parts.append(
             f"{bot['name']} is a level "
             f"{bot['level']} {bot['race']} "
-            f"{bot['class']} "
-            f"(personality: {trait_str})"
+            f"{bot['class']}"
         )
         append_speaker_gear(parts, bot)
         if bot.get('travel_context'):
@@ -171,6 +235,11 @@ def _append_bots_with_rp(parts, bots, traits_map, is_rp):
                 if shared_class:
                     parts.append(f"  {shared_class}")
                 seen_classes.add(cls_role_key)
+    parts.extend(build_cast_lines(
+        [personas[b['name']] for b in bots
+         if b['name'] in personas],
+        mode,
+    ))
 
 
 def build_bot_greeting_prompt(
@@ -213,10 +282,8 @@ def build_bot_greeting_prompt(
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
 
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
 
     rp_context = ""
@@ -258,6 +325,7 @@ def build_bot_greeting_prompt(
 
     # Location context: BG > dungeon > zone flavor
     location_context = ""
+    dungeon_flav = None
     if bg_context:
         bg_type_id = int(
             bg_context.get('bg_type_id', 0))
@@ -311,7 +379,9 @@ def build_bot_greeting_prompt(
         f"{location_context}\n"
         + "\n".join(
             build_environmental_context_lines()
-            if is_rp else []
+            if is_rp and (
+                not dungeon_flav or instance_has_sky(map_id)
+            ) else []
         )
         + "\n"
     )
@@ -321,7 +391,7 @@ def build_bot_greeting_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
 
     if members:
         others = [
@@ -475,15 +545,11 @@ def build_bot_greeting_prompt(
             f"- Don't use the player's name"
         )
 
-    spices = pick_personality_spices(
-        mode=mode, spice_count_override=_spice_count
+    spice_line = format_spices_line(
+        maybe_pick_personality_spices(mode)
     )
-    if spices:
-        prompt += (
-            "\nBackground feelings (texture, "
-            "not the topic): "
-            + "; ".join(spices)
-        )
+    if spice_line:
+        prompt += f"\n{spice_line}"
     return append_json_instruction(
         prompt, allow_action
     )
@@ -502,10 +568,8 @@ def build_bot_welcome_prompt(
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
 
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
 
     rp_context = ""
@@ -555,7 +619,7 @@ def build_bot_welcome_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
 
     if members:
         others = [
@@ -604,15 +668,11 @@ def build_bot_welcome_prompt(
         f"- You can use {new_bot_name}'s name "
         f"or just say a general welcome"
     )
-    spices = pick_personality_spices(
-        mode=mode, spice_count_override=_spice_count
+    spice_line = format_spices_line(
+        maybe_pick_personality_spices(mode)
     )
-    if spices:
-        prompt += (
-            "\nBackground feelings (texture, "
-            "not the topic): "
-            + "; ".join(spices)
-        )
+    if spice_line:
+        prompt += f"\n{spice_line}"
     return append_json_instruction(
         prompt, allow_action
     )
@@ -637,10 +697,8 @@ def build_batch_welcome_prompt(
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
 
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
 
     rp_context = ""
@@ -693,7 +751,7 @@ def build_batch_welcome_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
 
     if members:
         others = [
@@ -749,15 +807,11 @@ def build_batch_welcome_prompt(
         f"- You can name them or just say a "
         f"general welcome"
     )
-    spices = pick_personality_spices(
-        mode=mode, spice_count_override=_spice_count
+    spice_line = format_spices_line(
+        maybe_pick_personality_spices(mode)
     )
-    if spices:
-        prompt += (
-            "\nBackground feelings (texture, "
-            "not the topic): "
-            + "; ".join(spices)
-        )
+    if spice_line:
+        prompt += f"\n{spice_line}"
     return append_json_instruction(
         prompt, allow_action
     )
@@ -779,10 +833,8 @@ def build_kill_reaction_prompt(
     """
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
     state_ctx = ""
     actual_role = None
@@ -887,7 +939,7 @@ def build_kill_reaction_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
     if state_ctx:
         prompt += f"{state_ctx}\n"
     prompt += (
@@ -899,7 +951,8 @@ def build_kill_reaction_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"{_enemy_name_rule(pvp, pvp_named, 'creature')}"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -925,10 +978,8 @@ def build_loot_reaction_prompt(
     """
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
     state_ctx = ""
     actual_role = None
@@ -1027,7 +1078,7 @@ def build_loot_reaction_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
     if state_ctx:
         prompt += f"{state_ctx}\n"
     prompt += (
@@ -1039,7 +1090,8 @@ def build_loot_reaction_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Can mention the item by name\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat\n"
         f"- NEVER say the item will serve YOU "
@@ -1063,10 +1115,8 @@ def build_combat_reaction_prompt(
     """
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
     state_ctx = ""
     actual_role = None
@@ -1145,7 +1195,7 @@ def build_combat_reaction_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
     if state_ctx:
         prompt += f"{state_ctx}\n"
     prompt += (
@@ -1158,7 +1208,11 @@ def build_combat_reaction_prompt(
         f"- Extremely brief, 3-8 words max\n"
         f"- No quotes, no emojis\n"
         f"- Can mention the enemy by name\n"
-        f"- Reflect your personality traits\n"
+        f"- The fight is only starting: speak to the "
+        f"engagement, never as if the enemy has "
+        f"already fallen\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -1182,10 +1236,8 @@ def build_death_reaction_prompt(
     """
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(reactor_traits)
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, reactor, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
     state_ctx = ""
     actual_role = None
@@ -1262,7 +1314,7 @@ def build_death_reaction_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
     if state_ctx:
         prompt += f"{state_ctx}\n"
     prompt += (
@@ -1279,7 +1331,8 @@ def build_death_reaction_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Mention {dead_name} by name\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -1293,18 +1346,19 @@ def build_levelup_reaction_prompt(
     mode, chat_history="", allow_action=True,
     speaker_talent_context=None,
     stored_tone=None,
+    leveler_desc="",
 ):
     """Build prompt for a bot reacting to someone
     leveling up. Always congratulatory/excited.
+    leveler_desc ("Dwarf Priest") keeps the speaker from
+    guessing the leveler's race or class.
     If is_bot=True, reacting to another bot.
     If is_bot=False, reacting to the real player.
     """
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
 
     rp_context = ""
@@ -1321,6 +1375,8 @@ def build_levelup_reaction_prompt(
     who = leveler_name
     if not is_bot:
         who = f"{leveler_name} (the real player)"
+    if leveler_desc:
+        who = f"{who}, a {leveler_desc},"
 
     levelup_context = (
         f"{who} just reached level {new_level}! "
@@ -1351,7 +1407,7 @@ def build_levelup_reaction_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
     prompt += (
         f"{rp_context}\n\n"
         f"{levelup_context}\n\n"
@@ -1361,7 +1417,8 @@ def build_levelup_reaction_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Can mention level {new_level}\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -1385,10 +1442,8 @@ def build_quest_complete_reaction_prompt(
     """
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
 
     rp_context = ""
@@ -1460,7 +1515,7 @@ def build_quest_complete_reaction_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
     prompt += (
         f"{rp_context}\n\n"
         f"{quest_context}\n\n"
@@ -1470,7 +1525,8 @@ def build_quest_complete_reaction_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Can mention the quest by name\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -1497,10 +1553,8 @@ def build_quest_objectives_reaction_prompt(
     """
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
 
     rp_context = ""
@@ -1567,7 +1621,7 @@ def build_quest_objectives_reaction_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
     prompt += (
         f"{rp_context}\n\n"
         f"{quest_context}\n\n"
@@ -1577,7 +1631,8 @@ def build_quest_objectives_reaction_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Can mention the quest by name\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't attribute the completion to "
         f"any specific player — it was a group "
         f"effort\n"
@@ -1603,10 +1658,8 @@ def build_achievement_reaction_prompt(
     """
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
 
     rp_context = ""
@@ -1687,7 +1740,7 @@ def build_achievement_reaction_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
     prompt += (
         f"{rp_context}\n\n"
         f"{achieve_context}\n\n"
@@ -1705,7 +1758,8 @@ def build_achievement_reaction_prompt(
             f"yours — congratulate them\n"
         )
     prompt += (
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -1727,10 +1781,8 @@ def build_group_achievement_reaction_prompt(
     """
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
 
     rp_context = ""
@@ -1786,7 +1838,7 @@ def build_group_achievement_reaction_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
     prompt += (
         f"{rp_context}\n\n"
         f"{achieve_context}\n\n"
@@ -1798,7 +1850,8 @@ def build_group_achievement_reaction_prompt(
         f"- Can mention the achievement by name\n"
         f"- You may mention a few names but don't "
         f"list everyone\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -1837,10 +1890,8 @@ def build_spell_cast_reaction_prompt(
     """
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
     state_ctx = ""
     actual_role = None
@@ -2102,7 +2153,7 @@ def build_spell_cast_reaction_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
     if state_ctx:
         prompt += f"{state_ctx}\n"
     prompt += (
@@ -2116,7 +2167,8 @@ def build_spell_cast_reaction_prompt(
         f"- Short reaction, one sentence only\n"
         f"- No quotes around your message\n"
         f"- No emojis\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
         f"{anti_rep_block}"
@@ -2137,17 +2189,25 @@ def build_player_response_prompt(
     memories=None,
     travel_context="",
     brief_casual=False,
+    thread_context="",
+    backstory="",
 ):
     """Build prompt for a bot responding to a real
     player's party chat message. The bot should
     reply naturally and contextually.
+
+    backstory: already-gated backstory text
+    (chatter_persona.party_reaction_backstory);
+    roleplay only, skipped for brief casual replies.
+
+    thread_context: read-only conversation-thread note
+    (chatter_threads.render_for_player_reply); skipped
+    for brief casual replies.
     """
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    ) if not brief_casual else None
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode) if not brief_casual else None
 
 
     rp_context = ""
@@ -2157,6 +2217,12 @@ def build_player_response_prompt(
         )
         if ctx:
             rp_context = f"\n{ctx}"
+        backstory_block = (
+            format_backstory_block(backstory, mode)
+            if not brief_casual else ''
+        )
+        if backstory_block:
+            rp_context += f"\n{backstory_block}"
 
         profile = RACE_SPEECH_PROFILES.get(
             bot['race']
@@ -2215,7 +2281,7 @@ def build_player_response_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
     if members:
         others = [
             m for m in members
@@ -2312,10 +2378,15 @@ def build_player_response_prompt(
     prompt += f"{rp_context}\n\n"
     if link_context:
         prompt += f"{link_context}\n\n"
+    thread_note = (
+        f"{thread_context}\n\n"
+        if thread_context and not brief_casual else ""
+    )
     prompt += (
         f"You are in a party. {player_name} just "
         f"said in party chat:\n"
         f"\"{player_message}\"\n\n"
+        f"{thread_note}"
         f"{style}\n\n"
         f"Reply in party chat.\n"
         + (
@@ -2329,7 +2400,8 @@ def build_player_response_prompt(
         f"- No quotes, no emojis\n"
         f"- Respond to what {player_name} said\n"
         f"{address_hint}"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat what they said\n"
         f"- If there's chat history, stay "
         f"consistent with the conversation\n"
@@ -2343,15 +2415,11 @@ def build_player_response_prompt(
             f"class/role perspective. Is it useful "
             f"for you? Good stats? Would you want it?"
         )
-    spices = pick_personality_spices(
-        mode=mode, spice_count_override=_spice_count
+    spice_line = format_spices_line(
+        maybe_pick_personality_spices(mode)
     )
-    if spices:
-        prompt += (
-            "\nBackground feelings (texture, "
-            "not the topic): "
-            + "; ".join(spices)
-        )
+    if spice_line:
+        prompt += f"\n{spice_line}"
     return append_json_instruction(
         prompt,
         allow_action,
@@ -2370,10 +2438,8 @@ def build_resurrect_reaction_prompt(
     """
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
 
     rp_context = ""
@@ -2411,7 +2477,7 @@ def build_resurrect_reaction_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
     prompt += (
         f"{rp_context}\n\n"
         f"You just died and someone in your "
@@ -2423,7 +2489,8 @@ def build_resurrect_reaction_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Express gratitude, relief, or drama\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -2447,10 +2514,8 @@ def build_zone_transition_prompt(
     """
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
 
     rp_context = ""
@@ -2540,7 +2605,7 @@ def build_zone_transition_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
     location_name = (
         area_label if is_subzone and area_label
         else zone_name
@@ -2555,7 +2620,8 @@ def build_zone_transition_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Can mention {location_name} by name\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -2569,15 +2635,11 @@ def build_zone_transition_prompt(
             f"use second-person \"you\" to mean "
             f"{player_name} (not a group)."
         )
-    spices = pick_personality_spices(
-        mode=mode, spice_count_override=_spice_count
+    spice_line = format_spices_line(
+        maybe_pick_personality_spices(mode)
     )
-    if spices:
-        prompt += (
-            "\nBackground feelings (texture, "
-            "not the topic): "
-            + "; ".join(spices)
-        )
+    if spice_line:
+        prompt += f"\n{spice_line}"
     return append_json_instruction(
         prompt, allow_action
     )
@@ -2598,10 +2660,8 @@ def build_quest_accept_reaction_prompt(
     """
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
 
     rp_context = ""
@@ -2682,7 +2742,7 @@ def build_quest_accept_reaction_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
     prompt += (
         f"{rp_context}\n\n"
         f"{quest_context}\n\n"
@@ -2692,19 +2752,16 @@ def build_quest_accept_reaction_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Can mention the quest by name\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
-    spices = pick_personality_spices(
-        mode=mode, spice_count_override=_spice_count
+    spice_line = format_spices_line(
+        maybe_pick_personality_spices(mode)
     )
-    if spices:
-        prompt += (
-            "\nBackground feelings (texture, "
-            "not the topic): "
-            + "; ".join(spices)
-        )
+    if spice_line:
+        prompt += f"\n{spice_line}"
     return append_json_instruction(
         prompt, allow_action
     )
@@ -2725,10 +2782,8 @@ def build_quest_accept_batch_prompt(
     """
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
 
     rp_context = ""
@@ -2786,7 +2841,7 @@ def build_quest_accept_batch_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
     prompt += (
         f"{rp_context}\n\n"
         f"{quest_context}\n\n"
@@ -2796,19 +2851,16 @@ def build_quest_accept_batch_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Can mention one quest name at most\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
-    spices = pick_personality_spices(
-        mode=mode, spice_count_override=_spice_count
+    spice_line = format_spices_line(
+        maybe_pick_personality_spices(mode)
     )
-    if spices:
-        prompt += (
-            "\nBackground feelings (texture, "
-            "not the topic): "
-            + "; ".join(spices)
-        )
+    if spice_line:
+        prompt += f"\n{spice_line}"
     return append_json_instruction(
         prompt, allow_action
     )
@@ -2825,10 +2877,8 @@ def build_dungeon_entry_prompt(
     """
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
 
     rp_context = ""
@@ -2904,7 +2954,7 @@ def build_dungeon_entry_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
     prompt += (
         f"{rp_context}\n\n"
         f"Your party just entered {map_name}, "
@@ -2917,7 +2967,8 @@ def build_dungeon_entry_prompt(
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Can mention {map_name} by name\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -2939,10 +2990,8 @@ def build_wipe_reaction_prompt(
     """
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
     state_ctx = ""
     actual_role = None
@@ -3009,7 +3058,7 @@ def build_wipe_reaction_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
     if state_ctx:
         prompt += f"{state_ctx}\n"
     prompt += (
@@ -3026,7 +3075,8 @@ def build_wipe_reaction_prompt(
             f"- Can reference {killer_name}\n"
         )
     prompt += (
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -3049,10 +3099,8 @@ def build_corpse_run_reaction_prompt(
     """
     is_rp = (mode == 'roleplay')
     trait_str = ', '.join(traits)
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=0.5, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
 
 
     rp_context = ""
@@ -3144,7 +3192,7 @@ def build_corpse_run_reaction_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
     prompt += (
         f"{rp_context}\n\n"
         f"{situation}\n\n"
@@ -3153,7 +3201,8 @@ def build_corpse_run_reaction_prompt(
         f"{_pick_length_hint(mode)}\n"
         f"Rules:\n"
         f"- No quotes, no emojis\n"
-        f"- Reflect your personality traits\n"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits\n"
         f"- Don't repeat jokes or themes "
         f"already said in chat"
     )
@@ -3220,7 +3269,7 @@ def build_low_health_callout_prompt(
         f"{build_player_prompt_header_from_dict(bot, mode)}\n"
         f"Your personality: {trait_str}\n"
         f"Your tone: "
-        f"{stored_tone or pick_random_tone(mode)}\n"
+        f"{_speaker_tone(stored_tone, bot, mode)}\n"
     )
     if speaker_talent_context:
         prompt += f"{speaker_talent_context}\n"
@@ -3235,7 +3284,8 @@ def build_low_health_callout_prompt(
         f"Rules:\n"
         f"- Extremely brief, 3-10 words\n"
         f"- No quotes, no emojis\n"
-        f"- Reflect your personality traits"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits"
     )
     return append_json_instruction(
         prompt, allow_action
@@ -3296,7 +3346,7 @@ def build_oom_callout_prompt(
         f"{build_player_prompt_header_from_dict(bot, mode)}\n"
         f"Your personality: {trait_str}\n"
         f"Your tone: "
-        f"{stored_tone or pick_random_tone(mode)}\n"
+        f"{_speaker_tone(stored_tone, bot, mode)}\n"
     )
     if speaker_talent_context:
         prompt += f"{speaker_talent_context}\n"
@@ -3312,7 +3362,8 @@ def build_oom_callout_prompt(
         f"Rules:\n"
         f"- Extremely brief, 3-10 words\n"
         f"- No quotes, no emojis\n"
-        f"- Reflect your personality traits"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits"
     )
     return append_json_instruction(
         prompt, allow_action
@@ -3397,7 +3448,7 @@ def build_aggro_loss_callout_prompt(
         f"{build_player_prompt_header_from_dict(bot, mode)}\n"
         f"Your personality: {trait_str}\n"
         f"Your tone: "
-        f"{stored_tone or pick_random_tone(mode)}\n"
+        f"{_speaker_tone(stored_tone, bot, mode)}\n"
     )
     if speaker_talent_context:
         prompt += f"{speaker_talent_context}\n"
@@ -3412,7 +3463,8 @@ def build_aggro_loss_callout_prompt(
         f"- Extremely brief, 3-10 words\n"
         f"- No quotes, no emojis\n"
         f"{names}"
-        f"- Reflect your personality traits"
+        "- Let your personality show in how you say it, "
+        f"without naming your traits"
     )
     return append_json_instruction(
         prompt, allow_action
@@ -3451,7 +3503,8 @@ def build_precache_combat_pull_prompt(
         +
         f"\nPersonality: {trait_str}"
         f"\nYour tone: "
-        f"{stored_tone or mood or pick_random_tone('normal')}"
+        f"{stored_tone or fallback_tone(0, bot_name, mode)}"
+        f"{_precache_mood_line(mood)}"
     )
     if rp_ctx:
         prompt += f"\n{rp_ctx}"
@@ -3465,7 +3518,9 @@ def build_precache_combat_pull_prompt(
         "\"Watch out, {target} incoming!\").\n"
         "Rules:\n"
         "- Must include {target} exactly once\n"
-        "- Reflect your personality\n"
+        + _precache_target_rules(mode) +
+        "- Let your personality show in how you say it, "
+        "without naming your traits\n"
         "- No quotes, no emojis\n"
         "- Put ONLY the spoken words in the "
         "\"message\" JSON field"
@@ -3510,7 +3565,8 @@ def build_precache_state_prompt(
         +
         f"\nPersonality: {trait_str}"
         f"\nYour tone: "
-        f"{stored_tone or mood or pick_random_tone('normal')}"
+        f"{stored_tone or fallback_tone(0, bot_name, mode)}"
+        f"{_precache_mood_line(mood)}"
     )
     if rp_ctx:
         prompt += f"\n{rp_ctx}"
@@ -3560,6 +3616,7 @@ def build_precache_state_prompt(
             "or \"{target} is breaking free!\").\n"
             "Rules:\n"
             "- Must include {target} exactly once\n"
+            + _precache_target_rules(mode)
         )
     else:
         prompt += (
@@ -3570,7 +3627,8 @@ def build_precache_state_prompt(
         )
 
     prompt += (
-        "- Reflect your personality\n"
+        "- Let your personality show in how you say it, "
+        "without naming your traits\n"
         "- No quotes, no emojis\n"
         "- Put ONLY the spoken words in the "
         "\"message\" JSON field"
@@ -3617,7 +3675,8 @@ def build_precache_spell_support_prompt(
         +
         f"\nPersonality: {trait_str}"
         f"\nYour tone: "
-        f"{stored_tone or mood or pick_random_tone('normal')}"
+        f"{stored_tone or fallback_tone(0, bot_name, mode)}"
+        f"{_precache_mood_line(mood)}"
     )
     if rp_ctx:
         prompt += f"\n{rp_ctx}"
@@ -3641,7 +3700,8 @@ def build_precache_spell_support_prompt(
         "(with curly braces)\n"
         "- Do NOT invent spell names — use {spell} "
         "for the spell name\n"
-        "- Reflect your personality\n"
+        "- Let your personality show in how you say it, "
+        "without naming your traits\n"
         "- No quotes, no emojis\n"
         "- Put ONLY the spoken words in the "
         "\"message\" JSON field"
@@ -3692,7 +3752,8 @@ def build_precache_spell_offensive_prompt(
         +
         f"\nPersonality: {trait_str}"
         f"\nYour tone: "
-        f"{stored_tone or mood or pick_random_tone('normal')}"
+        f"{stored_tone or fallback_tone(0, bot_name, mode)}"
+        f"{_precache_mood_line(mood)}"
     )
     if rp_ctx:
         prompt += f"\n{rp_ctx}"
@@ -3758,8 +3819,10 @@ def build_precache_spell_offensive_prompt(
         "- This is a DAMAGE ability — your tone "
         "must be combative, not healing or "
         "supportive\n"
-        + style_rule +
-        "- Reflect your personality\n"
+        + style_rule
+        + _precache_target_rules(mode) +
+        "- Let your personality show in how you say it, "
+        "without naming your traits\n"
         "- No quotes, no emojis\n"
         "- Put ONLY the spoken words in the "
         "\"message\" JSON field"
@@ -3873,7 +3936,7 @@ def build_nearby_object_reaction_prompt(
         prompt += f" Personality: {trait_str}."
     prompt += (
         " Your tone: "
-        f"{stored_tone or pick_random_tone(mode)}."
+        f"{stored_tone or fallback_tone(0, bot_name, mode)}."
     )
     if is_rp:
         prompt += (
@@ -4025,14 +4088,13 @@ def build_nearby_object_conversation_prompt(
     if target_talent_context:
         parts.append(target_talent_context)
 
-    # Tone and twist
-    tone = pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
-    parts.append(f"Overall tone: {tone}")
+    # Each speaker's tone comes from their persona
+    # (see _append_bots_with_rp); twist is optional.
+    twist = maybe_get_creative_twist(mode=mode)
     if twist:
-        parts.append(f"Creative twist: {twist}")
+        parts.append(
+            f"{TWIST_LABEL_CONVERSATION}: {twist}"
+        )
 
     # Message count: 2 per bot, cap at 8
     msg_count = min(2 * num_bots, 8)
@@ -4070,16 +4132,11 @@ def build_nearby_object_conversation_prompt(
         "recent chat."
     )
 
-    spices = pick_personality_spices(
-        mode=mode,
-        spice_count_override=_spice_count,
+    spice_line = format_spices_line(
+        maybe_pick_personality_spices(mode)
     )
-    if spices:
-        parts.append(
-            "Background feelings (texture, "
-            "not the topic): "
-            + "; ".join(spices)
-        )
+    if spice_line:
+        parts.append(spice_line)
 
     if chat_history:
         parts.append(
@@ -4106,9 +4163,14 @@ def build_player_msg_conversation_prompt(
     target_talent_context=None,
     zone_id=0, area_id=0, map_id=0,
     brief_casual=False,
+    thread_context="",
 ):
     """Build prompt for a multi-bot conversation
     responding to a player's party chat message.
+
+    thread_context: read-only conversation-thread note
+    (chatter_threads.render_for_player_reply); skipped
+    for brief casual replies.
 
     Args:
         bots: list of bot dicts (name, class, race,
@@ -4162,6 +4224,8 @@ def build_player_msg_conversation_prompt(
         parts.append(link_context)
     if item_context:
         parts.append(item_context)
+    if thread_context and not brief_casual:
+        parts.append(thread_context)
 
     # Location context — dungeon takes priority
     dungeon_flav = get_dungeon_flavor(map_id)
@@ -4209,19 +4273,14 @@ def build_player_msg_conversation_prompt(
                 f"{', '.join(others)}"
             )
 
-    # Tone and twist
-    tone = pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
-    parts.append(f"\nOverall tone: {tone}")
+    # Each speaker's tone comes from their persona
+    # (see _append_bots_with_rp); twist is optional.
+    twist = maybe_get_creative_twist(mode=mode)
     if twist:
-        parts.append(f"Creative twist: {twist}")
+        parts.append(
+            f"\n{TWIST_LABEL_CONVERSATION}: {twist}"
+        )
 
-    # Mood and length sequence
-    mood_seq = generate_conversation_mood_sequence(
-        msg_count, mode
-    )
     length_seq = (
         ["2-8 words, max 50 chars"] * msg_count
         if brief_casual
@@ -4229,33 +4288,24 @@ def build_player_msg_conversation_prompt(
             msg_count
         )
     )
-    # First speaker responds directly; override
-    # mood to 'engaged'
-    mood_seq[0] = 'engaged'
-
-    twist_log = (
-        f", twist={twist}" if twist else ""
-    )
-
     parts.append(
-        "\nMOOD AND LENGTH SEQUENCE "
-        "(follow for each message):"
+        "\nLENGTH SEQUENCE (follow for each message):"
     )
-    for i, mood in enumerate(mood_seq):
+    for i, length in enumerate(length_seq):
         speaker = bot_names[i]
         if i == 0:
+            # The addressed bot engages the player
+            # directly, in its own voice.
             parts.append(
                 f"  Message {i+1} ({speaker}): "
-                f"mood={mood}, "
-                f"length={length_seq[i]} "
-                f"— respond directly to "
+                f"length={length} "
+                f"— engage directly with "
                 f"{player_name}"
             )
         else:
             parts.append(
                 f"  Message {i+1} ({speaker}): "
-                f"mood={mood}, "
-                f"length={length_seq[i]} "
+                f"length={length} "
                 f"— build on the conversation"
             )
 
@@ -4297,16 +4347,11 @@ def build_player_msg_conversation_prompt(
         "already said in chat"
     )
 
-    spices = pick_personality_spices(
-        mode=mode,
-        spice_count_override=_spice_count,
+    spice_line = format_spices_line(
+        maybe_pick_personality_spices(mode)
     )
-    if spices:
-        parts.append(
-            "Background feelings (texture, "
-            "not the topic): "
-            + "; ".join(spices)
-        )
+    if spice_line:
+        parts.append(spice_line)
 
     if chat_history:
         parts.append(
@@ -4315,10 +4360,14 @@ def build_player_msg_conversation_prompt(
             + chat_history
         )
 
-    recent = (
-        chat_history.splitlines()[-10:]
-        if chat_history else []
-    )
+    # Only the bots' own spoken lines: not the header, blank
+    # lines, or the player's message the bots must answer.
+    recent = [
+        line.split(': ', 1)[1]
+        for line in (chat_history or '').splitlines()
+        if line.startswith('  ') and ': ' in line
+        and '(player):' not in line
+    ][-10:]
     anti_rep = build_anti_repetition_context(recent)
     if anti_rep:
         parts.append(anti_rep)
@@ -4632,7 +4681,7 @@ def build_bot_question_prompt(
         ]
         sanitized = [s for s in sanitized if s]
         if sanitized:
-            tone = stored_tone or pick_random_tone(mode)
+            tone = _speaker_tone(stored_tone, bot, mode)
             mem_lines = '\n'.join(
                 f"  - {m}" for m in sanitized
             )
@@ -4731,10 +4780,8 @@ def build_bot_question_prompt(
     # --------------------------------------------------
     # NORMAL PATH — no memories, full context prompt
     # --------------------------------------------------
-    tone = stored_tone or pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
+    tone = _speaker_tone(stored_tone, bot, mode)
+    twist = maybe_get_creative_twist(mode=mode)
     # Pick topic pool based on location context
     if get_dungeon_flavor(map_id) is not None:
         topic = random.choice(DUNGEON_QUESTION_TOPICS)
@@ -4794,7 +4841,8 @@ def build_bot_question_prompt(
     weather_arg = (
         None if in_dungeon else current_weather
     )
-    if is_rp:
+    sky = not in_dungeon or instance_has_sky(map_id)
+    if is_rp and sky:
         for line in build_environmental_context_lines(
             weather_arg
         ):
@@ -4846,7 +4894,7 @@ def build_bot_question_prompt(
         f"Your tone: {tone}\n"
     )
     if twist:
-        prompt += f"Creative twist: {twist}\n"
+        prompt += f"{TWIST_LABEL}: {twist}\n"
 
     prompt += (
         f"{rp_context}\n\n"
@@ -4877,16 +4925,11 @@ def build_bot_question_prompt(
         f"- You can use {player_name}'s name"
     )
 
-    spices = pick_personality_spices(
-        mode=mode,
-        spice_count_override=_spice_count
+    spice_line = format_spices_line(
+        maybe_pick_personality_spices(mode)
     )
-    if spices:
-        prompt += (
-            "\nBackground feelings (texture, "
-            "not the topic): "
-            + "; ".join(spices)
-        )
+    if spice_line:
+        prompt += f"\n{spice_line}"
 
     anti_rep = build_anti_repetition_context(
         recent_messages
@@ -5001,14 +5044,13 @@ def build_quest_complete_conversation_prompt(
     if speaker_talent_context:
         parts.append(speaker_talent_context)
 
-    # Tone and twist
-    tone = pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
-    parts.append(f"Overall tone: {tone}")
+    # Each speaker's tone comes from their persona
+    # (see _append_bots_with_rp); twist is optional.
+    twist = maybe_get_creative_twist(mode=mode)
     if twist:
-        parts.append(f"Creative twist: {twist}")
+        parts.append(
+            f"{TWIST_LABEL_CONVERSATION}: {twist}"
+        )
 
     if num_bots > 2:
         parts.append(
@@ -5038,16 +5080,11 @@ def build_quest_complete_conversation_prompt(
         "Don't repeat themes from recent chat."
     )
 
-    spices = pick_personality_spices(
-        mode=mode,
-        spice_count_override=_spice_count,
+    spice_line = format_spices_line(
+        maybe_pick_personality_spices(mode)
     )
-    if spices:
-        parts.append(
-            "Background feelings (texture, "
-            "not the topic): "
-            + "; ".join(spices)
-        )
+    if spice_line:
+        parts.append(spice_line)
 
     if chat_history:
         parts.append(
@@ -5153,14 +5190,13 @@ def build_quest_objectives_conversation_prompt(
     if speaker_talent_context:
         parts.append(speaker_talent_context)
 
-    # Tone and twist
-    tone = pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
-    parts.append(f"Overall tone: {tone}")
+    # Each speaker's tone comes from their persona
+    # (see _append_bots_with_rp); twist is optional.
+    twist = maybe_get_creative_twist(mode=mode)
     if twist:
-        parts.append(f"Creative twist: {twist}")
+        parts.append(
+            f"{TWIST_LABEL_CONVERSATION}: {twist}"
+        )
 
     if num_bots > 2:
         parts.append(
@@ -5191,16 +5227,11 @@ def build_quest_objectives_conversation_prompt(
         " Don't repeat themes from recent chat."
     )
 
-    spices = pick_personality_spices(
-        mode=mode,
-        spice_count_override=_spice_count,
+    spice_line = format_spices_line(
+        maybe_pick_personality_spices(mode)
     )
-    if spices:
-        parts.append(
-            "Background feelings (texture, "
-            "not the topic): "
-            + "; ".join(spices)
-        )
+    if spice_line:
+        parts.append(spice_line)
 
     if chat_history:
         parts.append(
@@ -5308,14 +5339,13 @@ def build_quest_accept_conversation_prompt(
     if speaker_talent_context:
         parts.append(speaker_talent_context)
 
-    # Tone and twist
-    tone = pick_random_tone(mode)
-    twist = maybe_get_creative_twist(
-        chance=1.0, mode=mode
-    )
-    parts.append(f"Overall tone: {tone}")
+    # Each speaker's tone comes from their persona
+    # (see _append_bots_with_rp); twist is optional.
+    twist = maybe_get_creative_twist(mode=mode)
     if twist:
-        parts.append(f"Creative twist: {twist}")
+        parts.append(
+            f"{TWIST_LABEL_CONVERSATION}: {twist}"
+        )
 
     if num_bots > 2:
         parts.append(
@@ -5345,16 +5375,11 @@ def build_quest_accept_conversation_prompt(
         "Don't repeat themes from recent chat."
     )
 
-    spices = pick_personality_spices(
-        mode=mode,
-        spice_count_override=_spice_count,
+    spice_line = format_spices_line(
+        maybe_pick_personality_spices(mode)
     )
-    if spices:
-        parts.append(
-            "Background feelings (texture, "
-            "not the topic): "
-            + "; ".join(spices)
-        )
+    if spice_line:
+        parts.append(spice_line)
 
     if chat_history:
         parts.append(

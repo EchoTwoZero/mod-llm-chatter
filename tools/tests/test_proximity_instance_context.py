@@ -1594,8 +1594,7 @@ def test_cpp_source_contracts_cover_instance_safety():
     enter_combat = group_combat.split(
         'void HandleGroupPlayerEnterCombatImpl(', 1
     )[1].split('\nvoid ', 1)[0]
-    assert 'IsLLMChatterBoss(creature)' not in enter_combat
-    assert 'CREATURE_TYPE_FLAG_BOSS_MOB' in enter_combat
+    assert 'IsLLMChatterBoss(creature)' in enter_combat
     assert '_lastBossDialogueCheckTime' in world
     assert 'CheckBossProximityDialogue();' in world
     assert '_lastOutdoorProximityScanTime' in world

@@ -634,7 +634,7 @@ def insert_chat_message(
 
     Centralised helper replacing individual INSERT
     statements across the codebase. Handles the emote
-    column transparently.
+    column transparently. Returns the new row id.
 
     owner_subsystem is the authoritative classifier read by
     C++ delivery to honor per-subsystem master toggles (e.g.
@@ -716,6 +716,7 @@ def insert_chat_message(
         addressee_npc_spawn_id,
     ))
     db.commit()
+    return getattr(cursor, 'lastrowid', None)
 
 
 def query_item_details(
@@ -1421,6 +1422,11 @@ def cleanup_stale_groups(db) -> int:
                 teardown_group_session(gid)
             except Exception:
                 pass
+            try:
+                from chatter_threads import clear_group
+                clear_group(gid)
+            except Exception:
+                pass
             cleaned += 1
 
         db.commit()
@@ -1664,6 +1670,11 @@ def cleanup_all_session_data(db):
             "DELETE FROM llm_chatter_events"
         )
         db.commit()
+        try:
+            from chatter_threads import clear_all
+            clear_all()
+        except Exception:
+            pass
         logger.info(
             "[CLEANUP] All session data cleared"
             " — no players online"
