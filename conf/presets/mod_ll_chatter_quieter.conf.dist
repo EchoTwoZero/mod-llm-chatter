@@ -2029,9 +2029,9 @@ LLMChatter.GroupChatter.PlayerMsgSecondBotChance = 25
 #   LLMChatter.GroupChatter.PlayerMsgCooldown
 #       Minimum seconds between group reactions to player
 #       chat messages.
-#       Default: 15
+#       Default: 0
 #
-LLMChatter.GroupChatter.PlayerMsgCooldown = 15
+LLMChatter.GroupChatter.PlayerMsgCooldown = 0
 
 #
 #   LLMChatter.GroupChatter.GeneralRelayEnable
@@ -2107,9 +2107,9 @@ LLMChatter.GroupChatter.GeneralRelayMaxGroups = 1
 #       Chance (0-100) that a bot reacts when a player types
 #       a non-question message in General chat. Questions
 #       (ending with ?) use QuestionChance instead.
-#       Default: 40
+#       Default: 100
 #
-LLMChatter.GeneralChat.ReactionChance = 40
+LLMChatter.GeneralChat.ReactionChance = 100
 
 #
 #   LLMChatter.GeneralChat.QuestionChance
@@ -2118,9 +2118,9 @@ LLMChatter.GeneralChat.ReactionChance = 40
 #       "?" use ReactionChance instead. This simple detection
 #       gives direct questions a higher response rate, but
 #       statements and remarks also trigger at ReactionChance.
-#       Default: 80
+#       Default: 100
 #
-LLMChatter.GeneralChat.QuestionChance = 80
+LLMChatter.GeneralChat.QuestionChance = 100
 
 #
 #   LLMChatter.GeneralChat.Cooldown
