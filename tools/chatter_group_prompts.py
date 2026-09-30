@@ -325,6 +325,7 @@ def build_bot_greeting_prompt(
 
     # Location context: BG > dungeon > zone flavor
     location_context = ""
+    dungeon_flav = None
     if bg_context:
         bg_type_id = int(
             bg_context.get('bg_type_id', 0))

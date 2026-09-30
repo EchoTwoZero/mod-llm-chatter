@@ -900,6 +900,14 @@ void LLMChatterConfig::LoadConfig()
         GetChatterOption<uint32>(
             "LLMChatter.BGChatter."
             "IdleChatterCooldownSec", 30);
+    _bgFlagCarryChatterIntervalSec =
+        GetChatterOption<uint32>(
+            "LLMChatter.BGChatter."
+            "FlagCarryChatterIntervalSec", 45);
+    _bgFlagCarryChatterChance =
+        GetChatterOption<uint32>(
+            "LLMChatter.BGChatter."
+            "FlagCarryChatterChance", 50);
     _bgRezChance =
         GetChatterOption<uint32>(
             "LLMChatter.BGChatter."

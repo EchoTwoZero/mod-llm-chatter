@@ -1045,6 +1045,7 @@ instead of rendering it as a `/slash` command.
 | `tools/chatter_raid_prompts.py` | Raid prompt builders (boss, morale, battle cry, banter) |
 | `tools/chatter_battlegrounds.py` | BG event handlers |
 | `tools/chatter_bg_prompts.py` | BG prompt builders (lore tables moved to `chatter_constants.py`) |
+| `tools/chatter_bg_flag_timeline.py` | Per-match WSG flag event timeline (drop/return/regrab/stale-carry decisions) |
 
 ## Ownership Boundaries That Matter
 
@@ -1636,6 +1637,12 @@ Subgroup/party only:
   idle chatter, flag-carrier self-messages
 
 This reduces duplicate near-identical lines across party and raid.
+
+Party chat in a BG raid only reaches the speaker's sub-group, so
+party-channel BG chatter is scoped to bots in the real player's
+sub-group (`GetRandomBotInGroup()`, `AppendRaidContext()`, and the
+Python `fire_subgroup_worker(speaker_guid=...)` guard). BG arrival
+batches only list bots in the player's sub-group.
 
 ## Database Tables
 

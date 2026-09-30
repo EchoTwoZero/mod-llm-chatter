@@ -278,6 +278,8 @@ public:
     uint32 _bgBigEventCooldownSec;
     uint32 _bgIdleChatterChance{25};
     uint32 _bgIdleChatterCooldownSec{30};
+    uint32 _bgFlagCarryChatterIntervalSec{45};
+    uint32 _bgFlagCarryChatterChance{50};
     uint32 _bgRezChance{20};
 
     // Raid chatter (PvE)

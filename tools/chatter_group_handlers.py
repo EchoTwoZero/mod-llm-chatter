@@ -101,7 +101,7 @@ from chatter_group_prompts import (
     build_quest_accept_conversation_prompt,
 )
 from chatter_raid_base import (
-    dual_worker_dispatch,
+    fire_subgroup_worker,
 )
 from chatter_raid_prompts import (
     build_raid_battle_cry_prompt,
@@ -1363,6 +1363,55 @@ def process_group_achievement_event(
         return True
     batched_names = batch_result
 
+    # BG: always use the BG prompt (the generic one has
+    # no score/flag/faction context), spoken by a bot
+    # in the player's sub-group.
+    if extra_data.get('is_battleground'):
+        # The same BG achievement ("Know Thy Enemy") is
+        # earned by bot after bot; comment on it again
+        # only after the repeat window.
+        repeat = _burst_reserve(
+            'bg_achievement:' + str(achievement_name),
+            config, extra_data,
+            'LLMChatter.BGChatter.AchievementRepeatWindowSec',
+            300, boss_passes=False,
+        )
+        if repeat is None:
+            _mark_event(db, event_id, 'skipped')
+            return False
+        # Early in a BG everyone earns HK achievements
+        # at once; voice at most one per window.
+        reservation = _burst_reserve(
+            'bg_achievement', config, extra_data,
+            'LLMChatter.BGChatter.AchievementCooldownSec',
+            45, boss_passes=False,
+        )
+        if reservation is None:
+            _burst_finish(repeat, False)
+            _mark_event(db, event_id, 'skipped')
+            return False
+        if batched_names:
+            extra_data['achiever_name'] = ', '.join(
+                batched_names)
+        extra_data['event_type'] = (
+            'bot_group_achievement')
+        result = False
+        try:
+            result = bool(fire_subgroup_worker(
+                db, client, config,
+                event, extra_data,
+                prompt_fn=build_bg_achievement_prompt,
+                label='reaction_achievement',
+            ))
+        finally:
+            _burst_finish(reservation, result)
+            _burst_finish(repeat, result)
+        _mark_event(
+            db, event_id,
+            'completed' if result else 'skipped',
+        )
+        return result
+
     # Pick a different bot to react
     reactor_data = get_other_group_bot(
         db, group_id, achiever_guid,
@@ -1376,22 +1425,6 @@ def process_group_achievement_event(
             db, group_id, achiever_guid,
         )
         if not trait_data:
-            if extra_data.get('is_battleground'):
-                extra_data['event_type'] = (
-                    'bot_group_achievement')
-                result = dual_worker_dispatch(
-                    db, client, config,
-                    event, extra_data,
-                    subgroup_prompt_fn=(
-                        build_bg_achievement_prompt),
-                    raid_prompt_fn=None,
-                )
-                _mark_event(
-                    db, event_id,
-                    'completed' if result
-                    else 'skipped',
-                )
-                return result
             _mark_event(db, event_id, 'skipped')
             return False
         reactor_guid = achiever_guid

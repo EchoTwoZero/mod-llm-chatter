@@ -742,6 +742,28 @@ Player* GetRandomBotInGroup(
     if (!group)
         return nullptr;
 
+    // BG raid: party chat only reaches the speaker's
+    // subgroup, so only bots sharing the real player's
+    // subgroup can be heard.
+    bool scopeToSubGroup = false;
+    uint8 realSubGroup = 0;
+    if (group->isBGGroup())
+    {
+        for (GroupReference* itr =
+                 group->GetFirstMember();
+             itr != nullptr; itr = itr->next())
+        {
+            Player* member = itr->GetSource();
+            if (member && !IsPlayerBot(member))
+            {
+                realSubGroup = group->GetMemberGroup(
+                    member->GetGUID());
+                scopeToSubGroup = true;
+                break;
+            }
+        }
+    }
+
     std::vector<Player*> bots;
     for (GroupReference* itr =
              group->GetFirstMember();
@@ -750,7 +772,11 @@ Player* GetRandomBotInGroup(
         Player* member = itr->GetSource();
         if (member && IsPlayerBot(member)
             && member != exclude
-            && (!requireAlive || member->IsAlive()))
+            && (!requireAlive || member->IsAlive())
+            && (!scopeToSubGroup
+                || group->GetMemberGroup(
+                       member->GetGUID())
+                    == realSubGroup))
             bots.push_back(member);
     }
 

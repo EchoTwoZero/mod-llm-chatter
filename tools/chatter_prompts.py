@@ -697,7 +697,7 @@ def build_quest_statement_prompt(
     if random.random() < 0.5:
         parts.append(f"Player level: {bot['level']}")
 
-    quest_placeholder = f"{{{{quest:{quest['quest_name']}}}}}"
+    quest_placeholder = f"{{quest:{quest['quest_name']}}}"
     parts.append(f"Quest: {quest['quest_name']}")
     parts.append(
         f"REQUIRED: Include exactly "
@@ -793,7 +793,7 @@ def build_loot_statement_prompt(
     )
 
     parts = []
-    item_placeholder = f"{{{{item:{item['item_name']}}}}}"
+    item_placeholder = f"{{item:{item['item_name']}}}"
 
     if is_rp:
         identity = build_bot_identity(
@@ -984,11 +984,11 @@ def build_quest_reward_statement_prompt(
 
     parts.append(
         f"Quest: {quest['quest_name']} "
-        f"(use {{{{quest:{quest['quest_name']}}}}} placeholder)"
+        f"(use {{quest:{quest['quest_name']}}} placeholder)"
     )
     parts.append(
         f"Reward: {item_name} ({quality}) "
-        f"(use {{{{item:{item_name}}}}} placeholder)"
+        f"(use {{item:{item_name}}} placeholder)"
     )
 
     if random.random() < 0.5:
@@ -1635,7 +1635,7 @@ def build_quest_conversation_prompt(
 
     parts.append(
         f"Quest: {quest['quest_name']} "
-        f"(use {{{{quest:{quest['quest_name']}}}}} placeholder)"
+        f"(use {{quest:{quest['quest_name']}}} placeholder)"
     )
     if quest.get('description') and random.random() < 0.4:
         parts.append(
@@ -2138,7 +2138,7 @@ def build_spell_statement_prompt(
     parts = []
 
     spell_placeholder = (
-        f"{{{{spell:{spell['spell_name']}}}}}"
+        f"{{spell:{spell['spell_name']}}}"
     )
 
     if is_rp:
@@ -2274,7 +2274,7 @@ def build_spell_conversation_prompt(
     bot_names = [b['name'] for b in bots]
 
     spell_placeholder = (
-        f"{{{{spell:{spell['spell_name']}}}}}"
+        f"{{spell:{spell['spell_name']}}}"
     )
 
     if is_rp:
@@ -2503,7 +2503,7 @@ def build_trade_statement_prompt(
 
     parts = []
     item_placeholder = (
-        f"{{{{item:{item['item_name']}}}}}"
+        f"{{item:{item['item_name']}}}"
     )
 
     if is_rp:
@@ -2658,7 +2658,7 @@ def build_trade_conversation_prompt(
         item.get('item_quality', 2), "uncommon"
     )
     item_placeholder = (
-        f"{{{{item:{item['item_name']}}}}}"
+        f"{{item:{item['item_name']}}}"
     )
 
     if is_rp:

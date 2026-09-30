@@ -34,6 +34,7 @@ import time
 # Module-level config defaults (set by init_group_config)
 _chat_history_limit = 10
 
+from chatter_bg_prompts import build_bg_arrival_prompt
 from chatter_shared import (
     call_llm, cleanup_message, strip_speaker_prefix,
     get_chatter_mode, get_class_name, get_race_name,
@@ -1049,6 +1050,43 @@ def process_group_join_batch_event(
                     player_name,
                 )
 
+    # BG arrival: the batch holds the bots in the
+    # player's BG sub-group. Greet with a small random
+    # subset, and skip party-lifetime side effects
+    # (first-meeting memory, farewell pre-gen) that
+    # make no sense for random BG teammates.
+    in_bg_arrival = bool(extra_data.get('bg_type'))
+    bg_channel_greets = 0
+    if in_bg_arrival:
+        bg_greet_max = int(config.get(
+            'LLMChatter.BGChatter.ArrivalGreetingMax', 4
+        ))
+        bg_greet_min = int(config.get(
+            'LLMChatter.BGChatter.ArrivalGreetingMin', 1
+        ))
+        bg_greet_max = min(bg_greet_max, len(bots_raw))
+        if bg_greet_max <= 0:
+            _mark_event(db, event_id, 'skipped')
+            return False
+        bg_greet_min = max(1, min(bg_greet_min, bg_greet_max))
+        greet_count = random.randint(
+            bg_greet_min, bg_greet_max)
+        bots_raw = random.sample(bots_raw, greet_count)
+        # Random BG/party split; with 2+ greetings each
+        # channel gets at least one line (when allowed).
+        bg_chan_max = int(config.get(
+            'LLMChatter.BGChatter.ArrivalBGChannelGreetings',
+            2,
+        ))
+        bg_chan_max = max(0, min(bg_chan_max, greet_count))
+        if bg_chan_max == 0:
+            bg_channel_greets = 0
+        elif greet_count == 1:
+            bg_channel_greets = random.randint(0, 1)
+        else:
+            bg_channel_greets = random.randint(
+                1, min(bg_chan_max, greet_count - 1))
+
     greeted_bots = []
     last_bot = None
     last_delay = 0
@@ -1184,7 +1222,8 @@ def process_group_join_batch_event(
 
                     # First meeting: write a factual
                     # memory so the bot remembers
-                    if not bot_player_known:
+                    if (not bot_player_known
+                            and not in_bg_arrival):
                         pz_mem, _ = get_player_zone(
                             db, player_name
                         )
@@ -1294,21 +1333,46 @@ def process_group_join_batch_event(
                     _bg_ctx['score_horde'] = (
                         int(sh))
 
-            prompt = build_bot_greeting_prompt(
-                bot, traits, mode,
-                chat_history=chat_hist,
-                members=members,
-                player_name=player_name,
-                group_size=len(bots_raw) + 1,
-                speaker_talent_context=speaker_talent,
-                memories=bot_memories or None,
-                player_name_known=bot_player_known,
-                recall_memory=bot_recall,
-                stored_tone=stored_tone,
-                map_id=pm or 0,
-                zone_id=pz or 0,
-                bg_context=_bg_ctx,
-            )
+            if in_bg_arrival:
+                # Team rally before the gates open,
+                # not a "joined your party" greeting.
+                bg_extra = dict(extra_data)
+                bg_extra['_db'] = db
+                bg_extra['_config'] = config
+                # Arrival events carry 'zone', but the BG
+                # anti-repetition lookup reads 'zone_id'.
+                bg_extra.setdefault(
+                    'zone_id', extra_data.get('zone', 0))
+                if speaker_talent:
+                    bg_extra['_talent_context'] = (
+                        speaker_talent)
+                prompt = build_bg_arrival_prompt(
+                    bg_extra,
+                    {
+                        'bot_name': bot_name,
+                        'race': bot_race,
+                        'class': bot_class,
+                        'gender': bot.get('gender', ''),
+                        'level': bot_level,
+                        'traits': traits,
+                    },
+                )
+            else:
+                prompt = build_bot_greeting_prompt(
+                    bot, traits, mode,
+                    chat_history=chat_hist,
+                    members=members,
+                    player_name=player_name,
+                    group_size=len(bots_raw) + 1,
+                    speaker_talent_context=speaker_talent,
+                    memories=bot_memories or None,
+                    player_name_known=bot_player_known,
+                    recall_memory=bot_recall,
+                    stored_tone=stored_tone,
+                    map_id=pm or 0,
+                    zone_id=pz or 0,
+                    bg_context=_bg_ctx,
+                )
 
             # 3. Call LLM
             _greet_label = (
@@ -1346,9 +1410,17 @@ def process_group_join_batch_event(
             last_delay = delay
 
             emote = parsed.get('emote')
+            # BG arrivals only list bots in the player's
+            # sub-group (C++), so party chat is audible.
+            # The first few greeters rally the whole team
+            # in BG chat instead.
+            greet_channel = 'party'
+            if (in_bg_arrival
+                    and len(greeted_bots) < bg_channel_greets):
+                greet_channel = 'battleground'
             insert_chat_message(
                 db, bot_guid, bot_name, message,
-                channel='party',
+                channel=greet_channel,
                 delay_seconds=delay,
                 event_id=event_id,
                 emote=emote,
@@ -1373,13 +1445,15 @@ def process_group_join_batch_event(
                 'stored_tone': stored_tone,
             }
 
-            # 5. Pre-generate farewell
-            _prepare_group_farewell(
-                db, client, config,
-                bot_name, bot_race, bot_class,
-                bot.get('gender', ''),
-                traits, mode, group_id, bot_guid,
-            )
+            # 5. Pre-generate farewell (C++ never
+            # delivers farewells inside a BG)
+            if not in_bg_arrival:
+                _prepare_group_farewell(
+                    db, client, config,
+                    bot_name, bot_race, bot_class,
+                    bot.get('gender', ''),
+                    traits, mode, group_id, bot_guid,
+                )
 
         if not greeted_bots:
             _mark_event(db, event_id, 'skipped')
@@ -1453,7 +1527,7 @@ def process_group_join_batch_event(
                                 exc_info=True,
                             )
 
-        if not is_rejoin:
+        if not is_rejoin and not in_bg_arrival:
             # --- ONE welcome from existing bot ---
             new_names = [
                 b['name'] for b in greeted_bots

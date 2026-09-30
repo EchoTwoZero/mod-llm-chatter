@@ -1412,7 +1412,7 @@ def replace_placeholders(
     result = message
 
     if quest_data:
-        quest_pattern = r'\{quest:[^}]+\}'
+        quest_pattern = r'\{?\{quest:[^}]+\}\}?'
         if re.search(quest_pattern, result):
             link = format_quest_link(
                 quest_data['quest_id'],
@@ -1422,7 +1422,7 @@ def replace_placeholders(
             result = re.sub(quest_pattern, link, result)
 
     if item_data:
-        item_pattern = r'\{item:[^}]+\}'
+        item_pattern = r'\{?\{item:[^}]+\}\}?'
         link = format_item_link(
             item_data['item_id'],
             item_data.get('item_quality', 2),
@@ -1438,7 +1438,7 @@ def replace_placeholders(
                 )
 
     if spell_data:
-        spell_pattern = r'\{spell:[^}]+\}'
+        spell_pattern = r'\{?\{spell:[^}]+\}\}?'
         if re.search(spell_pattern, result):
             link = format_spell_link(
                 spell_data['spell_id'],

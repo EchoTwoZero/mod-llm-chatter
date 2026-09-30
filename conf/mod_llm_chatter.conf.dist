@@ -2930,6 +2930,65 @@ LLMChatter.EventExpirationSeconds = 600
 LLMChatter.BGChatter.MaxTokens = 300
 
 #
+#   LLMChatter.BGChatter.ArrivalGreetingMax
+#       [BRIDGE] Maximum number of bots that greet when you
+#       enter a battleground. Greeters come from your BG
+#       sub-group. 0 disables BG arrival greetings.
+#       Default: 4
+#
+LLMChatter.BGChatter.ArrivalGreetingMax = 4
+
+#
+#   LLMChatter.BGChatter.ArrivalGreetingMin
+#       [BRIDGE] Minimum number of bots that greet when you
+#       enter a battleground. Each entry rolls a random count
+#       between ArrivalGreetingMin and ArrivalGreetingMax
+#       (capped by the bots in your sub-group).
+#       Default: 1
+#
+LLMChatter.BGChatter.ArrivalGreetingMin = 1
+
+#
+#   LLMChatter.BGChatter.ArrivalBGChannelGreetings
+#       [BRIDGE] Maximum BG arrival greetings sent to battleground
+#       chat (heard by the whole team); the rest go to party chat.
+#       The split is random, and with two or more greetings each
+#       channel gets at least one line. 0 = party chat only.
+#       Default: 2
+#
+LLMChatter.BGChatter.ArrivalBGChannelGreetings = 2
+
+#
+#   LLMChatter.BGChatter.FlagRegrabWindowSec
+#       [BRIDGE] A flag pickup by the same player who dropped
+#       that flag within this many seconds is treated as a
+#       re-grab and gets no callout, so one carry that briefly
+#       drops the flag does not spam BG chat. 0 disables.
+#       Default: 15
+#
+LLMChatter.BGChatter.FlagRegrabWindowSec = 15
+
+#
+#   LLMChatter.BGChatter.AchievementCooldownSec
+#       [BRIDGE] Minimum seconds between achievement reactions for
+#       the same group inside a battleground. Early in a match
+#       everyone earns honorable-kill achievements at once; this
+#       keeps them from flooding party chat. 0 disables.
+#       Default: 45
+#
+LLMChatter.BGChatter.AchievementCooldownSec = 45
+
+#
+#   LLMChatter.BGChatter.AchievementRepeatWindowSec
+#       [BRIDGE] Once an achievement got a reaction in a
+#       battleground, the same achievement earned by other
+#       teammates is ignored for this many seconds (e.g. "Know
+#       Thy Enemy" earned bot after bot). 0 disables.
+#       Default: 300
+#
+LLMChatter.BGChatter.AchievementRepeatWindowSec = 300
+
+#
 #   LLMChatter.BGChatter.IdleChatterChance
 #       Percent chance (0-100) that bots chat during quiet
 #       stretches in a battleground. Checked each poll cycle
@@ -2945,6 +3004,35 @@ LLMChatter.BGChatter.IdleChatterChance = 15
 #       Default: 30
 #
 LLMChatter.BGChatter.IdleChatterCooldownSec = 30
+
+#
+#   LLMChatter.BGChatter.FlagCarryChatterIntervalSec
+#       [SERVER] While a Warsong Gulch flag is being carried, how
+#       often (seconds) the team may talk about the ongoing carry:
+#       encouraging your carrier, hunting theirs, or a standoff.
+#       The first line waits at least this long after a pickup.
+#       0 disables.
+#       Default: 45
+#
+LLMChatter.BGChatter.FlagCarryChatterIntervalSec = 45
+
+#
+#   LLMChatter.BGChatter.FlagCarryChatterChance
+#       [SERVER] Percent chance (0-100) that each carry-chatter
+#       interval actually produces a line, so the cadence is not
+#       predictable.
+#       Default: 50
+#
+LLMChatter.BGChatter.FlagCarryChatterChance = 50
+
+#
+#   LLMChatter.BGChatter.FlagCarryBGChannelChance
+#       [BRIDGE] Percent chance (0-100) that an ongoing flag-carry
+#       line is said in battleground chat by a teammate outside
+#       your sub-group, instead of in party chat.
+#       Default: 70
+#
+LLMChatter.BGChatter.FlagCarryBGChannelChance = 70
 
 #
 #   LLMChatter.BGChatter.RezChance
@@ -3074,14 +3162,6 @@ LLMChatter.Memory.LevelUpGenerationChance = 60
 #       Default: 45
 #
 LLMChatter.Memory.BGMatchGenerationChance = 45
-
-#
-#   LLMChatter.Memory.DiscoveryGenerationChance
-#       Percent chance (0-100) that discovering a new
-#       area generates a persistent memory.
-#       Default: 30
-#
-LLMChatter.Memory.DiscoveryGenerationChance = 30
 
 #
 #   LLMChatter.Memory.PvPKillGenerationChance

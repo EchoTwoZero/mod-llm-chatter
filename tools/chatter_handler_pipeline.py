@@ -43,7 +43,10 @@ from chatter_persona import (
     resolve_mood,
 )
 from chatter_threads import capture_session, note_event
-from chatter_raid_base import dual_worker_dispatch
+from chatter_raid_base import (
+    dual_worker_dispatch,
+    fire_subgroup_worker,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -193,17 +196,31 @@ def run_group_handler(
     # cleanup during the wait cannot be undone later.
     thread_session = capture_session(group_id)
 
-    # 7. BG fallback if no traits
-    if not trait_data and bg_fallback_prompt:
+    # 7. BG path: inside a battleground always use the
+    # BG prompt (score, flags, faction) — the generic
+    # party prompts carry no BG context. The event's
+    # own bot speaks, and only if the player can hear
+    # it (same sub-group).
+    in_bg = bool(extra_data.get('is_battleground'))
+    if bg_fallback_prompt and (in_bg or not trait_data):
         try:
-            ok = dual_worker_dispatch(
-                db, client, config, event,
-                extra_data,
-                subgroup_prompt_fn=(
-                    bg_fallback_prompt
-                ),
-                label=label,
-            )
+            if in_bg:
+                ok = bool(fire_subgroup_worker(
+                    db, client, config, event,
+                    extra_data,
+                    prompt_fn=bg_fallback_prompt,
+                    label=label,
+                    speaker_guid=bot_guid,
+                ))
+            else:
+                ok = dual_worker_dispatch(
+                    db, client, config, event,
+                    extra_data,
+                    subgroup_prompt_fn=(
+                        bg_fallback_prompt
+                    ),
+                    label=label,
+                )
             _mark_event(
                 db, event_id,
                 'completed' if ok else 'skipped',

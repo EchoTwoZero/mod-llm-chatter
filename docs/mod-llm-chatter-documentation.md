@@ -1404,7 +1404,7 @@ instructions so chatter stays short and tactical.
 
 | Key | Default | Purpose |
 |---|---|---|
-| `BGChatter.MaxTokens` | 32 | Max token cap for BG prompt paths |
+| `BGChatter.MaxTokens` | 300 | Max token cap for BG prompt paths |
 
 ### Flag-carrier context persistence
 
@@ -1418,6 +1418,83 @@ from `AppendBGContext()` in `LLMChatterBG.cpp`.
 That means if a real player is carrying the enemy flag, later BG prompt
 requests continue to know that until the flag is dropped, returned, or
 captured.
+
+### Sub-group audibility
+
+Inside a battleground the player's group is the BG raid, and party chat
+only reaches the speaker's own sub-group. Party-channel BG chatter must
+therefore come from a bot in the real player's sub-group:
+
+- `GetRandomBotInGroup()` scopes BG raid reactors to the real player's
+  sub-group
+- `AppendRaidContext()` anchors `party_bot_guids` on the real player's
+  sub-group even when a bot triggered the event
+- the Python BG path skips a pinned speaker (self-state callout, flag
+  carrier) that is not in `party_bot_guids`
+
+### BG prompts for group events
+
+Group events that fire inside a battleground (combat, death, spell,
+low health, OOM, achievement) always use the `chatter_bg_prompts.py`
+builders, even when the reacting bot has traits, so every party line
+carries score, flag, and faction context. Self-state callouts are spoken
+by the bot they describe. For low-health callouts `target_name` is the
+wounded bot's combat target, not the wounded person.
+
+### BG arrival greetings
+
+About 15 seconds after a real player enters a battleground,
+`bot_group_join_batch` fires with the bots in the player's sub-group.
+Python rolls a greeting count between `ArrivalGreetingMin` and
+`ArrivalGreetingMax` and uses the BG arrival prompt. The arrival event
+carries `match_in_progress` and the live score, so a late join into a
+running match is not described as the pre-fight gathering. A random split of
+at most `ArrivalBGChannelGreetings` speak in battleground chat and the
+rest in party chat; with two or more greetings each channel gets at
+least one line.
+BG arrivals skip the party welcome, composition comment, first-meeting
+memory, and farewell pre-generation.
+
+### Ongoing flag carries
+
+While a WSG flag is carried, C++ periodically queues `bg_idle_chatter`
+with a `flag_carry_status` marker and how long each flag has been held.
+Python answers with the flag-carry prompt: encourage the team's carrier
+(by name when it is a real player), hunt the enemy carrier, or react to
+a standoff. The cadence is `FlagCarryChatterIntervalSec` gated by
+`FlagCarryChatterChance`; `FlagCarryBGChannelChance` of those lines are
+said in battleground chat by the wider team instead of party chat.
+
+### Flag drops and re-grabs
+
+A WSG carrier losing the flag without a score change is reported as a
+drop even if the flag was already returned before the next state poll.
+A pickup by the same player who dropped that flag within
+`FlagRegrabWindowSec` is treated as a re-grab and gets no callout.
+
+These decisions use `tools/chatter_bg_flag_timeline.py`: flag events are
+fetched for the same recipient (`subject_guid`) and BG instance
+(`bg_instance_id`, added by `AppendBGContext()`), and judged by event-id
+order within one carry lifecycle, never by processing time. A drop whose
+flag was returned in the same carry (before or after the drop was queued)
+skips the team callout and keeps only the carrier's apology; a queued
+carry update is skipped if any flag event followed it.
+
+`AppendBGContext()` also sends `own_flag_state` / `enemy_flag_state`
+(`base`, `carried`, `ground`, `respawning`) in WSG, so prompts only claim
+a capture is possible while the team's own flag is at base.
+
+| Key | Default | Purpose |
+|---|---|---|
+| `BGChatter.ArrivalGreetingMin` | 1 | Min bots greeting on BG entry |
+| `BGChatter.ArrivalGreetingMax` | 4 | Max bots greeting on BG entry; 0 disables |
+| `BGChatter.ArrivalBGChannelGreetings` | 2 | Max arrival greetings in BG chat (random split); 0 = party only |
+| `BGChatter.FlagRegrabWindowSec` | 15 | Same-carrier re-pickup window with no callout; 0 disables |
+| `BGChatter.AchievementCooldownSec` | 45 | Min seconds between BG achievement reactions per group; 0 disables |
+| `BGChatter.AchievementRepeatWindowSec` | 300 | Min seconds before the same achievement gets another reaction in a BG; 0 disables |
+| `BGChatter.FlagCarryChatterIntervalSec` | 45 | Seconds between ongoing flag-carry lines; 0 disables |
+| `BGChatter.FlagCarryChatterChance` | 50 | Chance each carry interval produces a line |
+| `BGChatter.FlagCarryBGChannelChance` | 70 | Chance a carry line goes to BG chat instead of party |
 
 ---
 

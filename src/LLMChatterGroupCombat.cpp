@@ -329,9 +329,24 @@ void HandleGroupPlayerKilledByCreatureImpl(
     if (!GroupHasRealPlayer(group))
         return;
 
+    // In a BG, player pets/totems fall through the PvP
+    // path above. Name the owner so the prompt doesn't
+    // treat a pet called "Cat" as the enemy player
+    // ("Wulobe's Cat", "Majir's Searing Totem").
+    std::string killerName =
+        killer ? killer->GetName() : "";
+    if (killer)
+    {
+        Player* owner = killer
+            ->GetCharmerOrOwnerPlayerOrPlayerItself();
+        if (owner && owner != killed)
+            killerName = owner->GetName() + "'s "
+                + killer->GetName();
+    }
+
     QueueGroupDeathOrWipe(
         killed, group,
-        killer ? killer->GetName() : "",
+        killerName,
         killer ? killer->GetEntry() : 0,
         nullptr);
 }
