@@ -3130,6 +3130,7 @@ response path used by other chatter.
 | `PlayerReplies.FirstDelayMin` | 8 | Bridge | Minimum first reply delay |
 | `PlayerReplies.FirstDelayMax` | 20 | Bridge | Maximum first reply delay |
 | `PlayerChat.OptionalCasualReplyChance` | 20 | Bridge | Shared reply chance for semantically optional brief turns |
+| `PlayerChat.BriefCasualLengthWeights` | 35,45,20 | Bridge | General brief casual reply length weights: tiny (1-4 words), short (2-8), relaxed (5-14); a follow-up bot picks a different tier |
 | `SessionMemory.Enable` | 1 | Bridge | Include and compact session memory |
 | `SessionMemory.SummaryThresholdChars` | 3500 | Bridge | Compaction threshold |
 | `SessionMemory.SummaryMaxInputChars` | 8000 | Bridge | Per-call transcript input cap |
