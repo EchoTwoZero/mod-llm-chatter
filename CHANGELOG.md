@@ -44,7 +44,11 @@
 * **Configuration**: Added `Persona.*`, `Threads.*`, burst windows and new
   `BGChatter.*` keys (arrival greetings, flag re-grab window, achievement
   throttles, flag-carry chatter). The quieter preset now carries every
-  key of the default config. Removed the unused
+  key of the default config, and like the default it always answers
+  player messages in General (`GeneralChat.ReactionChance` and
+  `GeneralChat.QuestionChance` at 100) and party
+  (`GroupChatter.PlayerMsgCooldown` at 0). Brief casual turns keep
+  `PlayerChat.OptionalCasualReplyChance`. Removed the unused
   `Memory.DiscoveryGenerationChance`.
 * **Upgrade**: No database migration. Rebuild the server and restart the
   chatter bridge. Copy the new keys from `mod_llm_chatter.conf.dist` into
