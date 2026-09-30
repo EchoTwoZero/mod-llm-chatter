@@ -27,8 +27,10 @@ from chatter_shared import (
     find_addressed_bot,
     should_reply_to_optional_casual,
     build_conversational_scale_guidance,
+    brief_casual_length_line,
     brief_casual_response_fits,
     build_brief_casual_repair_prompt,
+    pick_brief_casual_tier,
     insert_chat_message,
     build_anti_repetition_context,
     get_recent_zone_messages,
@@ -472,6 +474,7 @@ def _build_general_response_prompt(
     subzone_lore="",
     brief_casual=False,
     thread_context="",
+    brief_tier=None,
 ):
     """Build prompt for a bot responding to a
     player's General channel message.
@@ -576,12 +579,14 @@ def _build_general_response_prompt(
         + f"{style}\n\n"
         f"Reply in General channel.\n"
         + (
-            "Length: 2-8 words, no more than 50 characters.\n"
+            f"{brief_casual_length_line(brief_tier)}\n"
             if brief_casual
             else f"{_pick_length_hint(mode)}\n"
         )
-        +
-        f"{build_conversational_scale_guidance(force_brief=brief_casual)}\n"
+        + build_conversational_scale_guidance(
+            force_brief=brief_casual, brief_tier=brief_tier,
+        )
+        + "\n"
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Prefer full words over internet slang — "
@@ -633,6 +638,7 @@ def _build_general_followup_prompt(
     subzone_name="",
     subzone_lore="",
     brief_casual=False,
+    brief_tier=None,
 ):
     """Build prompt for a 2nd bot following up
     on the 1st bot's reaction in General channel.
@@ -724,12 +730,14 @@ def _build_general_followup_prompt(
         f"{first_bot_name}'s response or add your "
         f"own take on what {player_name} said.\n"
         + (
-            "Length: 2-8 words, no more than 50 characters.\n"
+            f"{brief_casual_length_line(brief_tier)}\n"
             if brief_casual
             else f"{_pick_length_hint(mode)}\n"
         )
-        +
-        f"{build_conversational_scale_guidance(force_brief=brief_casual)}\n"
+        + build_conversational_scale_guidance(
+            force_brief=brief_casual, brief_tier=brief_tier,
+        )
+        + "\n"
         f"Rules:\n"
         f"- No quotes, no emojis\n"
         f"- Prefer full words over internet slang — "
@@ -945,6 +953,11 @@ def process_general_player_msg_event(
             mode == 'roleplay'
             and not brief_casual
         )
+        brief_tier1 = (
+            pick_brief_casual_tier(config) if brief_casual else None
+        )
+        if brief_tier1:
+            zone_meta['brief_casual_tier'] = brief_tier1
         prompt1 = _build_general_response_prompt(
             bot1_name, bot1_race, bot1_class,
             bot1_level, bot1_gender, bot1_traits,
@@ -960,6 +973,7 @@ def process_general_player_msg_event(
             subzone_lore=subzone_lore,
             brief_casual=brief_casual,
             thread_context=thread_context,
+            brief_tier=brief_tier1,
         )
 
         max_tokens = int(config.get(
@@ -1000,13 +1014,17 @@ def process_general_player_msg_event(
         )
         if (
             brief_casual
-            and not brief_casual_response_fits(msg1)
+            and not brief_casual_response_fits(
+                msg1, tier=brief_tier1
+            )
         ):
             repair_meta = dict(zone_meta)
             repair_meta['brief_casual_repair'] = True
             response1 = call_llm(
                 client,
-                build_brief_casual_repair_prompt(prompt1),
+                build_brief_casual_repair_prompt(
+                    prompt1, tier=brief_tier1
+                ),
                 config,
                 max_tokens_override=max_tokens,
                 context=f"gen-msg-brief-repair:{bot1_name}",
@@ -1023,7 +1041,9 @@ def process_general_player_msg_event(
             return False
         if (
             brief_casual
-            and not brief_casual_response_fits(msg1)
+            and not brief_casual_response_fits(
+                msg1, tier=brief_tier1
+            )
         ):
             mark_event(db, event_id, 'skipped')
             return False
@@ -1094,6 +1114,7 @@ def process_general_player_msg_event(
                     subzone_name=subzone_name,
                     subzone_lore=subzone_lore,
                     brief_casual=brief_casual,
+                    brief_tier_avoid=brief_tier1,
                     zone_meta=zone_meta,
                     faction=player_faction,
                 )
@@ -1180,6 +1201,7 @@ def _general_followup(
     zone_meta=None,
     brief_casual=False,
     faction="",
+    brief_tier_avoid=None,
 ):
     """Generate a second bot's followup response
     in General channel conversation mode.
@@ -1230,6 +1252,10 @@ def _general_followup(
     )
     chat_hist = _format_general_history(history)
 
+    brief_tier2 = (
+        pick_brief_casual_tier(config, avoid=brief_tier_avoid)
+        if brief_casual else None
+    )
     prompt2 = _build_general_followup_prompt(
         bot2_name, bot2_race, bot2_class,
         bot2_level, bot2_gender, bot2_traits,
@@ -1249,6 +1275,7 @@ def _general_followup(
         subzone_name=subzone_name,
         subzone_lore=subzone_lore,
         brief_casual=brief_casual,
+        brief_tier=brief_tier2,
     )
 
     max_tokens = int(config.get(
@@ -1256,6 +1283,8 @@ def _general_followup(
     ))
     if zone_meta is None:
         zone_meta = {}
+    if brief_tier2:
+        zone_meta['brief_casual_tier'] = brief_tier2
     if bot2_speaker_talent:
         zone_meta['speaker_talent'] = (
             bot2_speaker_talent
@@ -1286,13 +1315,17 @@ def _general_followup(
     )
     if (
         brief_casual
-        and not brief_casual_response_fits(msg2)
+        and not brief_casual_response_fits(
+            msg2, tier=brief_tier2
+        )
     ):
         repair_meta = dict(zone_meta)
         repair_meta['brief_casual_repair'] = True
         response2 = call_llm(
             client,
-            build_brief_casual_repair_prompt(prompt2),
+            build_brief_casual_repair_prompt(
+                prompt2, tier=brief_tier2
+            ),
             config,
             max_tokens_override=max_tokens,
             context=f"gen-followup-brief-repair:{bot2_name}",
@@ -1308,7 +1341,9 @@ def _general_followup(
         return
     if (
         brief_casual
-        and not brief_casual_response_fits(msg2)
+        and not brief_casual_response_fits(
+            msg2, tier=brief_tier2
+        )
     ):
         return
     msg2 = shorten_chat_message(msg2)
