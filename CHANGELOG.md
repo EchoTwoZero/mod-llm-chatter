@@ -41,6 +41,11 @@
   tone instead of two, and quest/item/spell placeholders no longer leave
   stray braces around links. Kill and pull reactions use burst guards
   (`GroupChatter.KillBurstWindow`, `GroupChatter.PullBurstWindow`).
+* **Brief replies in General vary in length**: Replies to brief casual
+  player messages no longer all land at 2-8 words. Each reply picks a
+  tiny, short or relaxed size, a second bot answering the same message
+  picks a different one, and a relaxed reply may toss a light question
+  back. Tunable with `PlayerChat.BriefCasualLengthWeights`.
 * **Configuration**: Added `Persona.*`, `Threads.*`, burst windows and new
   `BGChatter.*` keys (arrival greetings, flag re-grab window, achievement
   throttles, flag-carry chatter). The quieter preset now carries every

@@ -670,6 +670,19 @@ LLMChatter.GeneralChat.HistoryLimit = 15
 LLMChatter.PlayerChat.OptionalCasualReplyChance = 20
 
 #
+#   LLMChatter.PlayerChat.BriefCasualLengthWeights [BRIDGE]
+#       Relative weights for the length of a reply to a brief casual
+#       player message in General, as three numbers:
+#       tiny (1-4 words), short (2-8 words), relaxed (5-14 words).
+#       Each reply picks one, and a second bot answering the same
+#       message picks a different size, so brief replies stay brief
+#       without all coming out the same length. Use 0,100,0 for the
+#       previous fixed 2-8 word replies.
+#       Default: 35,45,20
+#
+LLMChatter.PlayerChat.BriefCasualLengthWeights = 35,45,20
+
+#
 #   LLMChatter.PlayerChat.IgnoredPrefixes [SERVER]
 #       Comma-separated literal prefixes for player-authored Party,
 #       General, Guild, and /say messages that Chatter must ignore.

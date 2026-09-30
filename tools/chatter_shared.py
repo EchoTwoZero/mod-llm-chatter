@@ -1636,9 +1636,74 @@ def strip_conversation_actions(
             pass
 
 
+# Brief casual length tiers: name -> (min words, max words, max chars).
+# One fixed band made every brief reply land at the same size; picking
+# a tier per reply keeps brief turns brief while varying them the way
+# people do ("Evening!" vs. a short line vs. one relaxed sentence).
+BRIEF_CASUAL_TIERS: Dict[str, Tuple[int, int, int]] = {
+    'tiny': (1, 4, 30),
+    'short': (2, 8, 50),
+    'relaxed': (5, 14, 85),
+}
+DEFAULT_BRIEF_CASUAL_TIER = 'short'
+_BRIEF_CASUAL_TIER_ORDER = ('tiny', 'short', 'relaxed')
+
+
+def _brief_casual_limits(
+    tier: Optional[str],
+) -> Tuple[int, int, int]:
+    return BRIEF_CASUAL_TIERS.get(
+        tier or DEFAULT_BRIEF_CASUAL_TIER,
+        BRIEF_CASUAL_TIERS[DEFAULT_BRIEF_CASUAL_TIER],
+    )
+
+
+def pick_brief_casual_tier(
+    config: Dict,
+    avoid: Optional[str] = None,
+) -> str:
+    """Pick a brief casual length tier from the configured weights.
+
+    avoid: tier used by the previous speaker in the same exchange;
+    it is skipped when another tier has weight, so two replies to
+    one player message do not come out the same size.
+    """
+    raw = str(config.get(
+        'LLMChatter.PlayerChat.BriefCasualLengthWeights',
+        '35,45,20',
+    ))
+    weights = []
+    for part in raw.split(','):
+        try:
+            weights.append(max(0, int(part.strip())))
+        except ValueError:
+            weights.append(0)
+    weights = (weights + [0, 0, 0])[:3]
+    pairs = [
+        (name, w)
+        for name, w in zip(_BRIEF_CASUAL_TIER_ORDER, weights)
+        if w > 0
+    ]
+    if avoid and any(name != avoid for name, _ in pairs):
+        pairs = [(name, w) for name, w in pairs if name != avoid]
+    if not pairs:
+        return DEFAULT_BRIEF_CASUAL_TIER
+    names, tier_weights = zip(*pairs)
+    return random.choices(names, weights=tier_weights, k=1)[0]
+
+
+def brief_casual_length_line(tier: Optional[str] = None) -> str:
+    """Length instruction for a brief casual reply."""
+    lo, hi, chars = _brief_casual_limits(tier)
+    return (
+        f"Length: {lo}-{hi} words, no more than {chars} characters."
+    )
+
+
 def build_conversational_scale_guidance(
     subject: str = "message",
     force_brief: bool = False,
+    brief_tier: Optional[str] = None,
 ) -> str:
     """Keep player-responsive dialogue proportional to its input."""
     guidance = (
@@ -1649,27 +1714,41 @@ def build_conversational_scale_guidance(
         "overrides generic mood, creativity, and length suggestions."
     )
     if force_brief:
+        lo, hi, chars = _brief_casual_limits(brief_tier)
         guidance += (
             " This interaction has been classified as brief and casual. "
-            "Use 2-8 words and no more than 50 characters. Use plain "
-            "conversational wording rather than a metaphor, blessing, "
-            "proverb, explanation, question, or ceremonial flourish. "
-            "Keep character voice through light word choice only."
+            f"Use {lo}-{hi} words and no more than {chars} characters. "
         )
+        if brief_tier == 'relaxed':
+            guidance += (
+                "Answer the way a person would in passing: plain words, "
+                "and if it feels natural, one small personal touch or a "
+                "light question back. No metaphor, blessing, proverb, "
+                "explanation, or ceremonial flourish."
+            )
+        else:
+            guidance += (
+                "Use plain conversational wording rather than a "
+                "metaphor, blessing, proverb, explanation, question, "
+                "or ceremonial flourish."
+            )
+        guidance += " Keep character voice through light word choice only."
     return guidance
 
 
 def brief_casual_response_fits(
     message: str,
     emote: Optional[str] = None,
+    tier: Optional[str] = None,
 ) -> bool:
     """Validate the hard output contract for a brief casual turn."""
     text = str(message or '').strip()
     if not text:
         return bool(emote)
+    _, hi, chars = _brief_casual_limits(tier)
     return (
-        len(text) <= 50
-        and len(text.split()) <= 8
+        len(text) <= chars
+        and len(text.split()) <= hi
     )
 
 
@@ -1678,30 +1757,34 @@ def bound_brief_casual_response(
     emote: Optional[str] = None,
     fallback_message: str = '',
     fallback_emote: Optional[str] = None,
+    tier: Optional[str] = None,
 ) -> Tuple[str, Optional[str]]:
     """Bound a usable brief response instead of discarding it."""
-    if brief_casual_response_fits(message, emote):
+    if brief_casual_response_fits(message, emote, tier):
         return message, emote
+    _, hi, chars = _brief_casual_limits(tier)
     source = (
         str(message or '').strip()
         or str(fallback_message or '').strip()
     )
-    first_eight_words = ' '.join(source.split()[:8])
+    first_words = ' '.join(source.split()[:hi])
     return (
-        shorten_chat_message(first_eight_words, 50),
+        shorten_chat_message(first_words, chars),
         emote or fallback_emote,
     )
 
 
 def build_brief_casual_repair_prompt(
     prompt: PromptParts,
+    tier: Optional[str] = None,
 ) -> PromptParts:
     """Request one format-preserving rewrite of an oversized reply."""
+    lo, hi, chars = _brief_casual_limits(tier)
     return prompt + (
         "\n\nYour previous response violated the brief-casual hard "
-        "limit. Rewrite it using 2-8 words and no more than 50 "
-        "characters. Keep it plain and conversational. Return the same "
-        "JSON shape requested above."
+        f"limit. Rewrite it using {lo}-{hi} words and no more than "
+        f"{chars} characters. Keep it plain and conversational. Return "
+        "the same JSON shape requested above."
     )
 
 

@@ -395,7 +395,12 @@ not a language-specific keyword list. For player speech, the shared semantic
 analysis marks a turn as `brief_casual`; that hard mode suppresses incidental
 multi-responder RNG, questions, callbacks, and creative expansion, limits
 generated text to 2-8 words and 50 characters, and permits one
-format-preserving rewrite when the first result exceeds the contract. Guild
+format-preserving rewrite when the first result exceeds the contract.
+General picks a length tier per reply instead (`pick_brief_casual_tier()`:
+tiny 1-4 words/30 chars, short 2-8/50, relaxed 5-14/85, weighted by
+`PlayerChat.BriefCasualLengthWeights`); a follow-up bot avoids the first
+reply's tier, and the relaxed tier may add one light question back. The
+prompt, the fit check, and the rewrite all use the picked tier. Guild
 can render a short third-person narrator action because guildmates may be
 remote. General remains textual. Party and proximity speech can instead
 deliver a valid structured emote with an empty message only while
