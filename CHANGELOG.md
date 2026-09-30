@@ -1,5 +1,55 @@
 # Changelog
 
+### 2026-09-30 - Coherent Personas, Conversation Threads, and Battleground Chatter
+
+* **Coherent personas**: Bots speak from one persona in party, Guild and
+  General chat: stored traits and tone (plus backstory in roleplay mode),
+  or a stable fallback seeded from the bot. Random tones, re-rolled
+  traits and per-message mood sequences are gone; mood only changes from
+  real events and is shared across channels. Twists and spices are gated
+  by `Persona.TwistChance` / `Persona.SpiceChance` and never override the
+  personality. Backstories can colour party reactions and player replies.
+* **Conversation threads**: Party idle chatter, Guild and General follow
+  a conversation thread instead of a random topic per exchange. Subjects
+  develop, drift and get called back, feelings linger, and new subjects
+  are mostly persona-driven, with a small allowance for surprises. Player
+  messages and event reactions blend into the thread; wipes and deaths
+  take over. Tunable with `Threads.*`.
+* **Emote ripples**: Emoting at a party bot can ripple to other party
+  bots and nearby witnesses, with contagious mood.
+* **Battleground chatter**: Party chat in a battleground only reaches the
+  speaker's sub-group, so reactions now come from bots in the player's
+  sub-group and always use battleground context (score, flags, faction).
+  Arrival greetings no longer crash, vary in number and split between
+  battleground and party chat, and tell a pre-start entry from a late
+  join. In Warsong Gulch, drops are no longer missed when the flag is
+  returned before the next state check, re-grabs and stale lines are
+  filtered per match, and bots talk about ongoing flag carries (escort,
+  hunt or standoff) in party and battleground chat. Achievement
+  reactions are throttled.
+* **Prompt context fixes**: Low-health callouts name the attacker, not an
+  imaginary casualty; spell lines no longer invent kills; speakers who
+  scored or carried the flag speak in first person; kill reactions know
+  the killer's class; pets and totems are named with their owner.
+  Hostile NPCs treat a nearby party as intruders, pull reactions and
+  cached lines never announce the kill, and open-air instances keep time
+  and season while indoor ones drop them.
+* **Playtest fixes**: Pet and totem kills reach the kill reaction path,
+  dungeon encounter bosses count as bosses on the pull, dungeon entry
+  reactions pick a speaker, level-up reactions name the leveler's race
+  and class, General replies keep the addressed bot, a new bot gets one
+  tone instead of two, and quest/item/spell placeholders no longer leave
+  stray braces around links. Kill and pull reactions use burst guards
+  (`GroupChatter.KillBurstWindow`, `GroupChatter.PullBurstWindow`).
+* **Configuration**: Added `Persona.*`, `Threads.*`, burst windows and new
+  `BGChatter.*` keys (arrival greetings, flag re-grab window, achievement
+  throttles, flag-carry chatter). The quieter preset now carries every
+  key of the default config. Removed the unused
+  `Memory.DiscoveryGenerationChance`.
+* **Upgrade**: No database migration. Rebuild the server and restart the
+  chatter bridge. Copy the new keys from `mod_llm_chatter.conf.dist` into
+  your config, or keep the built-in defaults.
+
 ### 2026-09-26 - Open-World PvP, Duels, and Nearby Onlookers
 
 * **Party PvP reactions**: Companions react to opposing-faction players
