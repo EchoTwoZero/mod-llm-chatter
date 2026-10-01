@@ -30,6 +30,8 @@ import openai
 
 import chatter_ambient
 
+from chatter_identity import config_int as profile_config_int
+from chatter_identity_jobs import prepare_guild_profiles, guild_profiles_enabled
 from chatter_constants import (
     DEFAULT_ANTHROPIC_MODEL,
     DEFAULT_GOOGLE_MODEL,
@@ -1973,6 +1975,8 @@ def main():
     bot_question_future = None
     legacy_future = None
     tone_regen_future = None
+    guild_profile_future = None
+    last_guild_profile_scan = 0
     # Track online→offline transition for full wipe
     was_players_online = True
 
@@ -2056,6 +2060,10 @@ def main():
                     "tone-regeneration"
                 )
                 tone_regen_future = None
+
+            if guild_profile_future and guild_profile_future.done():
+                _harvest_future(guild_profile_future, "guild-profiles")
+                guild_profile_future = None
 
             # DB connection with proper lifecycle
             db = None
@@ -2214,6 +2222,23 @@ def main():
                                 future
                             )
                             dispatched += 1
+
+                if (
+                    players_online
+                    and guild_profiles_enabled(config)
+                    and guild_profile_future is None
+                    and current_time - last_guild_profile_scan
+                    >= profile_config_int(
+                        config, 'LLMChatter.Profile.GuildScanIntervalSeconds',
+                        15, 1,
+                    )
+                    and not _has_urgent_event_backlog(db, _PRIORITY_URGENT_FLOOR)
+                ):
+                    last_guild_profile_scan = current_time
+                    guild_profile_future = executor.submit(
+                        _run_in_worker, "guild-profiles",
+                        prepare_guild_profiles, client, config,
+                    )
 
                 # Idle chatter -> worker pool
                 if (
