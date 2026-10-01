@@ -811,5 +811,3 @@ def handle_tone_regen_event(
 
     regenerate_bot_tone(db, config, bot_guid)
     return True
-
-
