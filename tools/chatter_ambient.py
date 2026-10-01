@@ -52,7 +52,7 @@ from chatter_group_general_reaction import (
     maybe_queue_group_general_reaction,
 )
 from chatter_text import pick_statement_length
-from chatter_persona import resolve_persona
+from chatter_identity import prepare_channel_persona
 from chatter_threads import (
     general_key,
     plan_idle_turn,
@@ -331,8 +331,8 @@ def process_statement(
     bot['gear'] = build_gear_context(
         db, bot['guid'], bot['class'], config,
     )
-    bot['persona'] = resolve_persona(
-        db, bot['guid'], bot['name'], mode,
+    bot['persona'] = prepare_channel_persona(
+        db, client, config, bot['guid'], bot['name'], 'general',
     )
 
     # Talent context injection (speaker only)
@@ -584,8 +584,8 @@ def process_conversation(
 
     attach_speaker_gear(db, bots, config)
     for b in bots:
-        b['persona'] = resolve_persona(
-            db, b['guid'], b['name'], mode,
+        b['persona'] = prepare_channel_persona(
+            db, client, config, b['guid'], b['name'], 'general',
         )
 
     # Talent context injection (speaker only,

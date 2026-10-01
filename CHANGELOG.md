@@ -1,5 +1,34 @@
 # Changelog
 
+### 2026-10-01 - Shared Chat Profiles and More Natural Player Replies
+
+* **Shared bot profiles**: General speakers create missing traits, tone and
+  backstory before generating speech and reuse saved profiles afterward.
+  Guild members receive the same profile preparation through bounded
+  background scans while a real guildmate is online; selected Guild
+  speakers also fill missing fields before speaking. Existing profile
+  fields are preserved, with retries for incomplete generation.
+* **Consistent persona context**: General and Guild prompts include each
+  selected speaker's traits and tone. In roleplay mode, each speaker has
+  an independent 25% chance of including their backstory, configurable
+  through `Backstory.GeneralChance` and `Backstory.GuildChance`.
+* **Varied General replies**: Player-driven replies use configurable short,
+  medium and developed length suggestions. Follow-up speakers vary their
+  suggested length where possible. Useful answers take priority over
+  targets, and messages are never asked to pad to a minimum.
+* **Intent-based conversational scope**: The LLM judges what the player
+  invites from meaning and recent conversation, rather than input length.
+  Short open questions can receive concrete detail; acknowledgments and
+  farewells stay brief. Existing optional silence, Party responsiveness,
+  channel limits and normal/roleplay boundaries are preserved. No keyword
+  matching or additional analysis call is introduced.
+* **Configuration**: Added `GeneralChat.PlayerReplyLengthWeights`,
+  `GeneralChat.PlayerReplyLengthMaxima`, and `Profile.*` controls for Guild
+  profile scan intervals, batch sizes and retry delays.
+* **Upgrade**: Restart only the chatter bridge. No C++ compilation or
+  database migration is needed. New configuration keys have built-in
+  defaults.
+
 ### 2026-09-30 - Coherent Personas, Conversation Threads, and Battleground Chatter
 
 * **Coherent personas**: Bots speak from one persona in party, Guild and
