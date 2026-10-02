@@ -2778,13 +2778,13 @@ All under `LLMChatter.Screenshot.*`:
 |---|---|---|
 | `Enable` | 0 | Enable/disable the feature |
 | `IntervalMinSeconds` | 45 | Minimum seconds between captures |
-| `IntervalMaxSeconds` | 90 | Maximum seconds between captures |
-| `Chance` | 60 | % chance per interval tick |
+| `IntervalMaxSeconds` | 120 | Maximum seconds between captures |
+| `Chance` | 90 | % chance per interval tick |
 | `VisionProvider` | openai | Vision LLM provider (openai, anthropic, google, or openrouter) |
-| `VisionModel` | gpt-4o-mini | Vision model name |
-| `ConversationChance` | 30 | % chance of multi-bot conversation vs statement |
-| `MaxWidthPx` | 800 | Max image width for vision API |
-| `JpegQuality` | 70 | JPEG compression quality |
+| `VisionModel` | gpt-6-luna | Vision model name |
+| `ConversationChance` | 40 | % chance of multi-bot conversation vs statement |
+| `MaxWidthPx` | 1024 | Max image width for vision API |
+| `JpegQuality` | 75 | JPEG compression quality |
 | `BoundAccountId` | 0 | Account ID to find grouped bots |
 | `DBHost` | 127.0.0.1 | MySQL host (host machine, not Docker) |
 
