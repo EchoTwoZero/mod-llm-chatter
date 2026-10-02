@@ -1130,6 +1130,10 @@ token use.
 
 ### Shared zone pacing
 
+`LLMChatter.GeneralChat.Cooldown` limits player-message reaction attempts
+per zone and faction. Both presets and the server fallback use 3 seconds;
+set it to 0 to disable this cooldown. Apply changes with `.reload config`.
+
 Automated ambient and world-event General producers share one per-zone
 delivery reservation. Multi-line conversations reserve the complete
 scheduled sequence before inserting their first row, and the next

@@ -2191,12 +2191,11 @@ LLMChatter.GeneralChat.QuestionChance = 100
 
 #
 #   LLMChatter.GeneralChat.Cooldown
-#       Per-zone cooldown (seconds) between bot reactions to
-#       player messages in General chat. Prevents bots from
-#       responding to every single message in a busy zone.
-#       Default: 30
+#       Per-zone, per-faction cooldown (seconds) between bot reactions
+#       to player messages in General chat. Set to 0 to disable.
+#       Default: 3
 #
-LLMChatter.GeneralChat.Cooldown = 30
+LLMChatter.GeneralChat.Cooldown = 3
 
 #
 #   LLMChatter.GeneralChat.ReactDelay
