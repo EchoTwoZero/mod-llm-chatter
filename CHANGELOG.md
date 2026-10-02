@@ -1,5 +1,30 @@
 # Changelog
 
+### 2026-10-02 - Model Compatibility, NPC Facing and Responsive Chatter
+
+* **Model capabilities**: Use one ordered capability table for OpenAI
+  request parameters and reasoning-token budgets. GPT-6 Luna and GPT-6 Sol
+  honor explicit `none` reasoning without inflating the output budget;
+  other reasoning models keep conservative fallbacks and parameter-rejection
+  recovery. OpenRouter and fine-tuned model names share the resolver.
+* **NPC facing safety**: Only rotate creatures with idle default and current
+  movement and an empty or idle active movement slot. Wandering and
+  patrolling NPCs can still speak and emote without having their movement
+  replaced by a facing spline. Bot behavior is unchanged. This does not
+  repair movement interruptions caused by stock NPC scripts.
+* **Screenshot reactions**: Treat scene descriptions as background for
+  personal reactions rather than listing visible objects. Preserve scene
+  atmosphere, prefer recognized visual time of day over clock context,
+  and frame roleplay conversations as the speakers' surroundings.
+* **General reply cooldown**: Align both configuration templates, the server
+  fallback and the bridge's displayed default at 3 seconds per zone and
+  faction. Previously the normal template and fallback used 0, while the
+  quieter preset used 30. Set 0 to disable throttling.
+* **Upgrade**: Rebuild worldserver for the NPC-facing change and restart the
+  chatter bridge for Python changes. Existing configurations retain their
+  explicit cooldown; set it to 3 and run `.reload config` to apply the new
+  value. No database migration is required.
+
 ### 2026-10-02 - Arathi Basin Objectives and Battleground Arrival Variety
 
 * **Arathi Basin objectives**: Observe claims, assaults, counter-claims,
