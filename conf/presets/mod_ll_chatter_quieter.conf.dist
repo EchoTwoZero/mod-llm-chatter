@@ -3014,7 +3014,7 @@ LLMChatter.DistanceUnit = yards
 #       Does NOT affect party chat or event reactions.
 #       Default: 900 (15 minutes)
 #
-LLMChatter.BotSpeakerCooldownSeconds = 900
+LLMChatter.BotSpeakerCooldownSeconds = 120
 
 #
 #   LLMChatter.EventExpirationSeconds

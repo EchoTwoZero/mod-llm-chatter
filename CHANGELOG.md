@@ -1,5 +1,21 @@
 # Changelog
 
+### 2026-10-03 - Chat Parsing and Ambient Speaker Pacing
+
+* **Chat parsing**: When the model writes its `emote`, `action` or
+  `thread` fields inside the message text, cut them off before delivery
+  in single replies, truncated replies and conversation lines.
+  Previously the raw JSON could appear in General chat. Only a trailing
+  block that is valid JSON made of those fields is removed; quoted
+  labels in normal speech are kept.
+* **Ambient speaker pacing**: Set `BotSpeakerCooldownSeconds` to 120
+  seconds in both the normal template and quieter preset, down from
+  900. This reduces long silences between a bot's ambient turns;
+  party chat and event reactions are unaffected. Existing configurations
+  retain their explicit value.
+* **Upgrade**: Restart the chatter bridge. No rebuild or database
+  migration is required.
+
 ### 2026-10-03 - Screenshot Vision Hardening
 
 * **Vision model**: Recommend and default to `gpt-6-luna` for screenshot
