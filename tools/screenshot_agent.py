@@ -857,7 +857,10 @@ def main():
                 "LLMChatter.OpenAI.ApiKey not set")
             sys.exit(1)
 
-    run_agent(config)
+    try:
+        run_agent(config)
+    except KeyboardInterrupt:
+        log.info("Screenshot agent stopped")
 
 
 if __name__ == '__main__':
