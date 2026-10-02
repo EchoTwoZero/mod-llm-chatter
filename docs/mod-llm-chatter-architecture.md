@@ -81,6 +81,11 @@ C++ server:
 7. Messages are written to `llm_chatter_messages` for normal C++
    delivery.
 
+Screenshot descriptions and atmosphere serve as background for personal
+reactions rather than a narrated inventory of the scene. A recognized
+visual time of day takes precedence over clock-derived prompt context.
+Roleplay conversations frame the observation as the speakers' surroundings.
+
 The agent runs on the host machine (not in Docker) and connects to
 MySQL directly. It is configured via the same `.conf` file and is
 disabled by default.
