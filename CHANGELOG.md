@@ -1,5 +1,23 @@
 # Changelog
 
+### 2026-10-03 - Screenshot Vision Hardening
+
+* **Vision model**: Recommend and default to `gpt-6-luna` for screenshot
+  analysis. It accepts image input and costs less than `gpt-4o-mini`.
+  Existing configurations keep their explicit `VisionModel`.
+* **In-character conversations**: Roleplay screenshot conversations now
+  carry the shared in-character voice guidance, matching single comments.
+* **Real-player grouping**: Without `BoundAccountId`, the screenshot agent
+  only picks bots whose group has an online real player, using the same
+  rule as the bridge.
+* **Config parsing**: The screenshot agent reuses the bridge's config
+  parser, so a BOM or non-UTF-8 characters no longer stop it at startup.
+* **Documentation**: The README and the screenshot defaults table now
+  match the configuration templates, and the duplicate
+  `Screenshot.DBHost` entry is gone.
+* **Upgrade**: Restart the chatter bridge and the host-side screenshot
+  agent. No rebuild or database migration is required.
+
 ### 2026-10-02 - Model Compatibility, NPC Facing and Responsive Chatter
 
 * **Model capabilities**: Use one ordered capability table for OpenAI
