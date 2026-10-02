@@ -2176,13 +2176,11 @@ LLMChatter.GeneralChat.QuestionChance = 100
 
 #
 #   LLMChatter.GeneralChat.Cooldown
-#       Per-zone cooldown (seconds) between bot reactions to
-#       player messages in General chat. The default leaves
-#       player-authored turns unsuppressed; set a positive value
-#       only when a busy server deliberately needs throttling.
-#       Default: 0
+#       Per-zone, per-faction cooldown (seconds) between bot reactions
+#       to player messages in General chat. Set to 0 to disable.
+#       Default: 3
 #
-LLMChatter.GeneralChat.Cooldown = 0
+LLMChatter.GeneralChat.Cooldown = 3
 
 #
 #   LLMChatter.GeneralChat.ReactDelay
