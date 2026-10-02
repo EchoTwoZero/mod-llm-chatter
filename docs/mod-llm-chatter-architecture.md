@@ -679,6 +679,8 @@ It carries two extra attributes:
    - **OpenAI / Google / OpenRouter / Ollama**: system role message +
      user role message; `llm_compat.py` selects the token field and
      optional parameters from a conservative model capability profile
+     resolved through one ordered model-rule table; parameter selection
+     and reasoning-token budgets consume the same resolved capabilities
    - **Modern OpenAI reasoning models**: use
      `max_completion_tokens`, coordinate temperature with reasoning
      effort, and apply `LLMChatter.OpenAI.ReasoningEffort` only when

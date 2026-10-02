@@ -631,6 +631,12 @@ sampling models receive `temperature`; known reasoning models receive
 their supported token-limit shape and configured reasoning effort;
 unrecognized direct OpenAI models start without optional parameters.
 
+One ordered capability table in `llm_compat.py` owns model matching. Specific
+model rules precede family fallbacks, and both request parameters and token
+budgets use the resolved capabilities. GPT-6 Luna and GPT-6 Sol support
+explicit `none`; GPT-6 Astra and GPT-6.1 Sol retain the reasoning fallback.
+OpenRouter routing and fine-tuned IDs are normalized before model matching.
+
 If a provider explicitly rejects `temperature`, `reasoning_effort`,
 `max_tokens`, or `max_completion_tokens`, the bridge adjusts that one
 parameter, retries the rejected request, and caches the successful shape
@@ -639,7 +645,7 @@ or 422 errors and prefers the provider's structured parameter/code fields;
 other failures are not hidden or retried by this compatibility path.
 
 Generic provider error types such as `invalid_request_error` are not treated
-as parameter rejection codes by themselves. When a dotted GPT-5 generation
+as parameter rejection codes by themselves. When a model supporting `none`
 rejects `ReasoningEffort = none`, the retry also removes temperature and
 expands the completion budget before allowing the model's default reasoning.
 
@@ -658,7 +664,7 @@ LLMChatter.Model = haiku
 
 ```ini
 LLMChatter.Provider = openai
-LLMChatter.Model = gpt-5.6-luna
+LLMChatter.Model = gpt-6-luna
 LLMChatter.OpenAI.ReasoningEffort = none
 LLMChatter.OpenAI.MaxTokensMultiplier = 4
 ```
