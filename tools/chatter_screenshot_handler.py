@@ -216,7 +216,7 @@ def handle_screenshot_observation(db, client, config, event):
     members = get_group_members(db, group_id)
     conv_chance = int(config.get(
         'LLMChatter.Screenshot.ConversationChance',
-        30,
+        40,
     ))
     do_conversation = (
         len(members) >= 2
@@ -529,6 +529,7 @@ def _screenshot_conversation(
 
     if roleplay:
         prompt = (
+            f"{build_player_chat_guidance(mode, 'party')}\n"
             f"The following party members are travelling through "
             f"{context_str}:\n{bot_block}\n\n"
         )
