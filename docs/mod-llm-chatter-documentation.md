@@ -2862,9 +2862,11 @@ Three local delivery channels are handled by
 | `msay` | `CHAT_MSG_MONSTER_SAY` | NPC speech bubble |
 | `myell` | monster yell | Extended-range boss line |
 
-Ordinary-scene facing is best effort. A speaker with only idle or random
-movement may rotate via `SetFacingToObject()`; any scripted or controlled
-movement speaks without rotation. Directed rows can identify the real
+Ordinary-scene facing is best effort. A bot with idle or random movement,
+or an NPC whose spawn never moves, may rotate via `SetFacingToObject()`.
+NPCs that wander or patrol, and any scripted or controlled movement, speak
+or emote without rotation: turning them replaces their own movement and
+the core may not resume it. Directed rows can identify the real
 player, bot, or NPC addressee explicitly, so NPC asides face the other NPC
 while player-inclusive lines face the player when appropriate. One facing
 lease is kept through the final queued line before the original orientation

@@ -121,7 +121,9 @@ NPCs, and real players as they move through the world:
    `"say"` (for bots) or `"msay"` (for NPCs).
 7. C++ delivery dispatches bot messages via `CHAT_MSG_SAY` and NPC
    messages via `CHAT_MSG_MONSTER_SAY` (speech bubbles). Movement never
-   disqualifies a speaker. Only idle or random-wandering NPCs may rotate.
+   disqualifies a speaker. Only NPCs whose spawn never moves may rotate:
+   a facing spline replaces an NPC's wander or patrol movement and the core
+   generator may not resume it, so wanderers and patrollers speak unturned.
    A directed line uses its explicit addressee when present; otherwise
    the conversation sequence supplies the fallback. One facing lease is
    retained through the final line before the original orientation is
