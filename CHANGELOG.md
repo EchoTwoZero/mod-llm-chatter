@@ -12,6 +12,8 @@
   rule as the bridge.
 * **Config parsing**: The screenshot agent reuses the bridge's config
   parser, so a BOM or non-UTF-8 characters no longer stop it at startup.
+* **Clean shutdown**: Pressing Ctrl+C stops the screenshot agent with a
+  log line instead of a Python traceback.
 * **Documentation**: The README and the screenshot defaults table now
   match the configuration templates, and the duplicate
   `Screenshot.DBHost` entry is gone.
