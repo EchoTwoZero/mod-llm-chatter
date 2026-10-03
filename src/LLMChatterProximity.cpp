@@ -927,6 +927,12 @@ SelectedCandidateMatch FindSelectedCandidate(
 
     Unit* selected = ObjectAccessor::GetUnit(
         *player, selGuid);
+    if (!selected || selected == player
+        || !selected->IsAlive())
+    {
+        return {};
+    }
+
     // A selection alone is not conversational intent when that target
     // cannot answer here. Preserve ownership for explicitly named targets.
     ProximityCandidate selectedIdentity;
@@ -954,12 +960,6 @@ SelectedCandidateMatch FindSelectedCandidate(
             namesSelected = true;
             break;
         }
-    }
-
-    if (!selected || selected == player
-        || !selected->IsAlive())
-    {
-        return {};
     }
 
     if (Player* selectedPlayer = selected->ToPlayer())
