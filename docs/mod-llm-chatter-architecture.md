@@ -123,7 +123,11 @@ NPCs, and real players as they move through the world:
    and curated dungeon-lore grounding. NPC payloads also carry
    disposition, creature rank, creature type, and qualification reason.
 6. Messages are written to `llm_chatter_messages` with channel
-   `"say"` (for bots) or `"msay"` (for NPCs).
+   `"say"` (for bots) or `"msay"` (for NPCs). Ordinary, directed speech,
+   and emote conversations use `chatter_proximity_pacing.py` for bounded
+   length-aware gaps with subtle RNG (default 3-8 seconds). The first line
+   has no added wait. Bridge-owned `DynamicPacing.*` settings control this;
+   disabling them restores the event's fixed `line_delay_seconds`.
 7. C++ delivery dispatches bot messages via `CHAT_MSG_SAY` and NPC
    messages via `CHAT_MSG_MONSTER_SAY` (speech bubbles). Movement never
    disqualifies a speaker. Only NPCs whose spawn never moves may rotate:

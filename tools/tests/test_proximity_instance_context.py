@@ -2014,6 +2014,41 @@ def test_bot_directed_reactor_source_contract():
     assert 'to single-line output after zero inserts' in python_source
 
 
+def test_all_conversation_paths_use_proximity_pacing():
+    from unittest.mock import patch
+
+    extra = {
+        **INSTANCE_EXTRA,
+        'participants': [BOT, NPC],
+        'addressed_name': BOT['name'],
+        'player_message': 'How should we prepare for the road ahead?',
+        'player_emote': 'wave',
+        'max_lines': 2,
+        'line_delay_seconds': 99,
+    }
+    event = {'id': 91, 'extra_data': json.dumps(extra)}
+    response = json.dumps([
+        {'speaker': BOT['name'], 'message': 'We should bring supplies.'},
+        {'speaker': NPC['name'], 'message': 'And keep watch on the road.'},
+    ])
+    for handler in (
+        chatter_proximity.handle_proximity_conversation,
+        chatter_proximity.handle_proximity_player_conversation,
+        chatter_proximity.handle_proximity_player_emote,
+    ):
+        with patch.object(chatter_proximity, 'call_llm',
+                          return_value=response), \
+             patch.object(chatter_proximity, 'proximity_line_delays',
+                          return_value=[0, 7]) as pacing, \
+             patch.object(chatter_proximity, 'insert_chat_message') as insert, \
+             patch.object(chatter_proximity, 'find_addressed_bot',
+                          return_value={}):
+            assert handler(_DB(), None, NORMAL_CONFIG, event)
+            assert pacing.call_count == 1
+            assert [call.kwargs['delay_seconds']
+                    for call in insert.call_args_list] == [0, 7]
+
+
 def main():
     tests = [
         value for name, value in globals().items()

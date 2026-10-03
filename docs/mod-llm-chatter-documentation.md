@@ -3061,6 +3061,21 @@ Roster entries identify each participant as `NPC` or
 to playerbots. Uses global `EmoteChance` and `ActionChance` gates (not
 custom proximity-specific ones).
 
+### Conversation pacing
+
+Ordinary, directed `/say`, and multi-speaker emote conversations share
+`chatter_proximity_pacing.py`. The first generated line has no added wait.
+Subsequent gaps use the longer of the current and previous visible lines,
+allowing reading and composing to overlap. The default base is 3 seconds
+plus that length divided by 20, capped at 8 seconds. Each gap varies by
+up to 20%, sampled within the 3-8-second bounds so even long lines vary.
+A four-line scene therefore finishes within 24 seconds after its first
+scheduled line; generation latency and delivery polling are additional.
+Emote-only lines retain the minimum breathing room. Existing delivery-time
+range and scene checks still apply. Disable `DynamicPacing.Enable` to
+restore the fixed `ConversationLineDelay`. Restart the chatter bridge
+when changing these Python-owned settings.
+
 ### C++ ownership
 
 | File | Responsibility |
@@ -3080,6 +3095,7 @@ custom proximity-specific ones).
 | File | Responsibility |
 |------|----------------|
 | `chatter_proximity.py` | Ordinary/directed handlers, prompts, strict parser, and addressed history |
+| `chatter_proximity_pacing.py` | Bounded length-aware gaps for nearby conversation sequences |
 | `chatter_instance_context.py` | Shared instance location/lore grounding |
 | `chatter_boss_dialogue.py` | Safe one-line boss prompt and `myell` insertion |
 | `chatter_constants.py` | `PROXIMITY_CHAT_TOPICS` (250+ entries) |
@@ -3117,7 +3133,12 @@ All under `LLMChatter.ProximityChatter.*`:
 | `EntityCooldown` | 3 | Seconds per-entity (spawn GUID) cooldown; clamped to 0-3 |
 | `PlayerAddressChance` | 30 | % chance to address the real player |
 | `MaxConversationLines` | 4 | Maximum ambient lines |
-| `ConversationLineDelay` | 2 | Seconds between lines |
+| `ConversationLineDelay` | 2 | Fixed gap when dynamic pacing is disabled |
+| `DynamicPacing.Enable` | 1 | Bridge: length-aware conversation gaps |
+| `DynamicPacing.MinSeconds` | 3 | Minimum inter-line gap |
+| `DynamicPacing.MaxSeconds` | 8 | Maximum inter-line gap |
+| `DynamicPacing.CharsPerSecond` | 20 | Length contribution rate |
+| `DynamicPacing.JitterPercent` | 20 | Random variation within gap bounds |
 | `ReplyWindowSeconds` | 30 | How long a scene accepts replies |
 | `ReplyMaxTurns` | 5 | Maximum tracked scene turns |
 | `EnableBossDialogue` | 0 | Boss path; enable for controlled testing |
