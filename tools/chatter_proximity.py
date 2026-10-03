@@ -536,7 +536,12 @@ def _location_lines(
 ) -> List[str]:
     lines = build_location_prompt_lines(extra)
     context = build_instance_context(extra)
-    lines.extend(_environment_lines(db, extra, context['is_instance']))
+    observation = extra.get('screenshot_observation')
+    if isinstance(observation, dict):
+        from chatter_screenshot_context import screenshot_context_lines
+        lines.extend(screenshot_context_lines(observation))
+    else:
+        lines.extend(_environment_lines(db, extra, context['is_instance']))
     player_line = _player_context_line(db, extra)
     if player_line:
         lines.append(player_line)
@@ -871,7 +876,8 @@ def _single_prompt(
                 f"Speaker background: "
                 f"{speaker_backstory}"
             )
-    lines.append(f"Topic seed: {topic}")
+    if not isinstance(extra.get('screenshot_observation'), dict):
+        lines.append(f"Topic seed: {topic}")
 
     if player_message:
         lines.append(
@@ -937,7 +943,9 @@ def _conversation_prompt(
         for speaker in participants
     )
     fight_topic = _fight_topic(extra, mode)
-    if fight_topic:
+    if isinstance(extra.get('screenshot_observation'), dict):
+        topic = None
+    elif fight_topic:
         topic = fight_topic
     elif is_roleplay(mode) or not has_playerbot:
         topic = _pick_topic(PROXIMITY_CHAT_TOPICS, extra)
@@ -1018,7 +1026,7 @@ def _conversation_prompt(
         "Every listed speaker must speak at least once.",
         "Keep the exchange brief.",
         "",
-        f"Topic seed: {topic}",
+        *([f"Topic seed: {topic}"] if topic is not None else []),
         f"Write EXACTLY {max_lines} messages.",
         "Speakers may address each other by name.",
     ]
@@ -1068,17 +1076,20 @@ def _generate_single_line(
     delay_seconds: int = 0,
     label: str = 'proximity_say',
 ) -> bool:
+    if isinstance(extra.get('screenshot_observation'), dict):
+        topic = ''
+    else:
+        topic = topic or _fight_topic(extra, get_chatter_mode(config or {}))
+        topic = topic or (
+            _pick_topic(PROXIMITY_CHAT_TOPICS, extra)
+            if speaker.get('is_npc')
+            else _playerbot_topic(config, extra)
+        )
     prompt = _single_prompt(
         db,
         extra,
         speaker,
-        topic
-        or _fight_topic(extra, get_chatter_mode(config or {}))
-        or (
-            _pick_topic(PROXIMITY_CHAT_TOPICS, extra)
-            if speaker.get('is_npc')
-            else _playerbot_topic(config, extra)
-        ),
+        topic,
         player_message=player_message,
         last_message=last_message,
         config=config,

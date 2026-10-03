@@ -2743,7 +2743,7 @@ from the resulting description.
 5. Receives structured JSON: environment description, atmosphere,
    canonical tags (`landmark_type`, `biome`, `weather`, `time_of_day`,
    `creature_presence`)
-6. Canonical tag dedup prevents repeated observations of the same scene
+6. Party-only canonical tag dedup prevents repeated Party observations
 7. Inserts `bot_group_screenshot_observation` event into
    `llm_chatter_events` via direct MySQL connection. If available, the
    selected bot's live travel state from `llm_group_bot_traits` is
@@ -2770,6 +2770,60 @@ as a description of the game screenshot, allows supplied world or UI
 details to be discussed without inventing them, and responds in player
 voice rather than claiming physical presence in the scene.
 
+### Optional nearby NPC reactions
+
+`Screenshot.Proximity.Enable` adds a separate local reaction to the same
+visual observation. Party keeps its existing behavior. The host rolls
+`Screenshot.Proximity.Chance` independently after the existing
+`Screenshot.Chance` capture-cycle roll; either channel, both, or neither
+may speak. Solo players can use the NPC route without a group. A Party
+duplicate or failed insertion does not suppress local publication, and a
+local failure does not suppress Party.
+
+Local reactions require an explicit `Screenshot.BoundAccountId`, matching
+the account in the captured WoW window. Party's automatic group fallback
+does not identify the local player. Before spending on vision, the host
+requests server preflight for eligible live NPCs within
+`ProximityChatter.ScanRadius`. No eligible Party recipient or NPC ticket
+means no capture/vision call. BG/arena, combat, flying, disabled instance
+maps and active proximity conversations reject local scenes. Ground
+mounts remain eligible. After analysis the server rechecks the player and
+selects a fresh NPC-only roster using existing proximity compatibility,
+conversation chance, line limits, entity cooldowns and zone fatigue.
+The fatigue budget can reduce local opportunities further; the screenshot
+chance itself is rolled only once. Player `/say` handling is unchanged.
+
+Visuals are background for a personal reaction, never speaker identity or
+a list to recite. NPCs always speak as inhabitants of Azeroth, including
+normal mode. Authoritative location/lore remains; this route uses the
+supplied visual environment/time/weather instead of the ordinary proximity
+environment block and random topic. Ordinary proximity weather handling is
+unchanged. Biome is not used in prompts.
+
+The request expires if vision takes too long, the player changes session,
+map or instance, or moves beyond the scan radius from preflight. Each
+delivered line rechecks the snapshot and NPC range/visibility. Restart or
+config reload invalidates outstanding local captures. `MaxAgeSeconds`
+bounds preflight through server consumption, not the last spoken line;
+normal event expiry applies after consumption. Capture and server ticks
+are not atomic, so the scene can still change within these bounds.
+
+Deployment for this opt-in route requires:
+
+1. Apply `data/sql/characters/updates/20261003_screenshot_proximity.sql`
+   to the characters database (fresh installs include the base table).
+2. Regenerate the build configuration for the new C++ source, then build,
+   install and restart the worldserver using the deployment's normal flow.
+3. Set the account binding and enable screenshot/proximity settings;
+   reload worldserver config and restart the affected host agent/bridge
+   after installing the Python changes.
+4. Verify solo/grouped/mounted reactions, no-NPC silence, independent
+   channels, and suppression after leaving range, teleporting or relogging.
+
+Missing schema disables server polling with one diagnostic until config
+reload. The host preserves Party when local preflight fails. Feature
+defaults remain disabled; installing files alone does not activate it.
+
 ### Config keys
 
 All under `LLMChatter.Screenshot.*`:
@@ -2785,7 +2839,12 @@ All under `LLMChatter.Screenshot.*`:
 | `ConversationChance` | 40 | % chance of multi-bot conversation vs statement |
 | `MaxWidthPx` | 1024 | Max image width for vision API |
 | `JpegQuality` | 75 | JPEG compression quality |
-| `BoundAccountId` | 0 | Account ID to find grouped bots |
+| `BoundAccountId` | 0 | Party account binding; nonzero required for NPC proximity |
+| `Proximity.Enable` | 0 | Opt-in NPC route; worldserver and host setting |
+| `Proximity.Chance` | 30 | Host local roll after the shared capture-cycle roll |
+| `Proximity.PollIntervalMs` | 1000 | Server mailbox poll interval, 100-10000 ms |
+| `Proximity.RequestTimeoutSeconds` | 5 | Host preflight wait, 1-30 seconds |
+| `Proximity.MaxAgeSeconds` | 60 | Server preflight-to-consumption age, 5-300 seconds |
 | `DBHost` | 127.0.0.1 | MySQL host (host machine, not Docker) |
 
 ### Relevant files
@@ -2801,7 +2860,8 @@ All under `LLMChatter.Screenshot.*`:
 ### Notes
 
 - The agent runs on the host machine, not inside Docker
-- No C++ changes are required
+- Party-only screenshot operation needs no screenshot-specific C++ path;
+  the optional NPC route requires its server coordinator and migration
 - The vision biome tag is excluded from bot prompts (unreliable);
   zone/subzone names from the database are authoritative
 - Indoor scenes are explicitly supported in the vision prompt
@@ -3674,6 +3734,15 @@ Typical single-message JSON shape:
 ```json
 {"message": "...", "emote": null, "action": null}
 ```
+
+Shared text parsing removes confirmed leaked response fields from visible
+dialogue, including their optional opening brace. It also removes a complete
+trailing bare thread-report object when it contains only known thread keys,
+with a string `topic`, a valid `energy` label, a boolean `subject_changed`,
+and correctly typed optional `open_point` and `feelings` fields. The same
+cleanup applies to single responses and conversation message strings.
+Unrelated objects and incomplete bare reports are preserved rather than
+guessed at. Removing a bare report does not recover it into thread memory.
 
 ### Conversation response contract
 

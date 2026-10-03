@@ -28,6 +28,7 @@ import mysql.connector
 from PIL import Image
 
 from chatter_shared import parse_config
+from screenshot_proximity import request_ticket, publish_observation
 from llm_compat import (
     build_chat_options,
     create_chat_completion,
@@ -135,6 +136,12 @@ def load_screenshot_config(raw: dict) -> dict:
             'gpt-6-luna'),
         'bound_account_id': int(raw.get(
             'LLMChatter.Screenshot.BoundAccountId', '0')),
+        'proximity_enable': raw.get(
+            'LLMChatter.Screenshot.Proximity.Enable', '0') == '1',
+        'proximity_chance': max(0, min(100, int(raw.get(
+            'LLMChatter.Screenshot.Proximity.Chance', '30')))),
+        'proximity_request_timeout': max(1, min(30, int(raw.get(
+            'LLMChatter.Screenshot.Proximity.RequestTimeoutSeconds', '5')))),
         'max_width_px': int(raw.get(
             'LLMChatter.Screenshot.MaxWidthPx', '640')),
         'jpeg_quality': int(raw.get(
@@ -657,25 +664,42 @@ def _do_capture_cycle(
     if not is_wow_foreground():
         return
 
-    # Check for active group BEFORE capturing/calling
-    # the vision API — no point spending money if
-    # there's nobody to deliver the observation to.
-    db = get_db_connection(config)
+    # Resolve the routes independently before paying for vision.
+    group_info = None
+    ticket = None
+    account_id = config.get('bound_account_id', 0)
     try:
-        account_id = config.get('bound_account_id', 0)
-        if account_id:
-            group_info = get_bound_player_group(
-                db, account_id)
-        else:
-            group_info = get_active_group_fallback(db)
-    finally:
-        db.close()
+        db = get_db_connection(config)
+        try:
+            if account_id:
+                group_info = get_bound_player_group(db, account_id)
+            else:
+                group_info = get_active_group_fallback(db)
+        finally:
+            db.close()
+    except Exception:
+        log.exception('Screenshot Party eligibility failed')
 
-    if group_info is None:
-        log.info("No active group with bots, skipping")
+    if (config.get('proximity_enable') and account_id
+            and random.randint(1, 100) <= config['proximity_chance']):
+        try:
+            db = get_db_connection(config)
+            try:
+                ticket = request_ticket(
+                    db, account_id, config['proximity_request_timeout'])
+            finally:
+                db.close()
+        except Exception:
+            log.exception('Screenshot proximity preflight failed')
+
+    if group_info is None and ticket is None:
+        log.info("No eligible screenshot recipients, skipping")
         return
 
     # -- Capture and analyze --
+    # Preflight can wait several seconds; the player may have alt-tabbed.
+    if not is_wow_foreground():
+        return
     img = capture_wow_window()
     if img is None:
         return
@@ -720,10 +744,6 @@ def _do_capture_cycle(
     if description is None:
         return
 
-    if is_duplicate(description):
-        log.info("Vision: duplicate scene, skipping")
-        return
-
     log.info(
         "Vision: landmark=%s biome=%s weather=%s",
         description.get('landmark_type', 'none'),
@@ -731,19 +751,32 @@ def _do_capture_cycle(
         description.get('weather', 'none'),
     )
 
-    # -- Queue the event --
-    db = get_db_connection(config)
-    try:
-        queue_screenshot_event(
-            db, group_info, description)
-        update_dedup_cache(description)
-        log.info(
-            "Queued observation: %s (zone_id=%s)",
-            group_info['bot_name'],
-            group_info['zone'],
-        )
-    finally:
-        db.close()
+    # Party dedup belongs only to Party. Neither publication can suppress
+    # the other, even if its database operation fails.
+    party_duplicate = group_info is not None and is_duplicate(description)
+    if party_duplicate:
+        log.info('Vision: duplicate Party scene, skipping Party')
+    if group_info is not None and not party_duplicate:
+        try:
+            db = get_db_connection(config)
+            try:
+                queue_screenshot_event(db, group_info, description)
+                update_dedup_cache(description)
+                log.info('Queued observation: %s (zone_id=%s)',
+                         group_info['bot_name'], group_info['zone'])
+            finally:
+                db.close()
+        except Exception:
+            log.exception('Screenshot Party publication failed')
+    if ticket is not None:
+        try:
+            db = get_db_connection(config)
+            try:
+                publish_observation(db, ticket, description)
+            finally:
+                db.close()
+        except Exception:
+            log.exception('Screenshot proximity publication failed')
 
 
 def _create_vision_client(config: dict):

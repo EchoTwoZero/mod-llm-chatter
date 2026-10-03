@@ -3,6 +3,7 @@
  */
 
 #include "LLMChatterConfig.h"
+#include "LLMChatterScreenshot.h"
 #include "Guild.h"
 #include "LLMChatterBossDialogue.h"
 #include "LLMChatterDelivery.h"
@@ -660,6 +661,13 @@ void DeliverPendingMessagesImpl()
                     && anchorPlayer->GetMap()
                            ->GetInstanceId()
                         == eventInstanceId));
+        if (anchorValid && eventExtraData.find("screenshot_token")
+            != std::string::npos)
+        {
+            proximityRadius = sLLMChatterConfig->_proxChatterScanRadius;
+            anchorValid = IsScreenshotProximityCurrent(
+                anchorPlayer, eventExtraData);
+        }
         if (!anchorValid)
         {
             bot = nullptr;

@@ -1651,14 +1651,15 @@ std::string BuildBaseEventJson(
         + "}";
 }
 
-void QueueProximityEvent(
+bool QueueProximityEvent(
     Player* player, char const* eventType,
     std::vector<ProximityCandidate> const& speakers,
     std::vector<ProximityCandidate> const& allCandidates,
-    bool playerAddressed, uint32 maxLines)
+    bool playerAddressed, uint32 maxLines,
+    std::string const& screenshotFields = "")
 {
     if (!player || speakers.empty())
-        return;
+        return false;
 
     ProximityCandidate const& first = speakers[0];
     std::string cooldownKey =
@@ -1669,11 +1670,13 @@ void QueueProximityEvent(
             sLLMChatterConfig
                 ->_proxChatterEntityCooldown,
             true))
-        return;
+        return false;
 
     std::string json = BuildBaseEventJson(
         player, speakers, allCandidates,
         playerAddressed, maxLines);
+    if (!screenshotFields.empty())
+        json.insert(json.size() - 1, "," + screenshotFields);
     std::string escaped = EscapeString(json);
 
     QueueChatterEvent(
@@ -1697,6 +1700,7 @@ void QueueProximityEvent(
     SetProximityCooldown(
         _entityCooldowns, cooldownKey);
     NoteZoneTrigger(player);
+    return true;
 }
 
 void QueuePlayerSayProximityEvent(
@@ -2365,6 +2369,78 @@ std::string GetBotEntityCooldownKey(
 }
 
 } // namespace
+
+bool CanQueueScreenshotProximity(Player* player)
+{
+    if (!IsEligibleProximityAnchor(player) || IsPlayerBot(player))
+        return false;
+    auto scenes = _playerScenes.find(player->GetGUID().GetCounter());
+    if (scenes != _playerScenes.end())
+        for (uint32 id : scenes->second)
+        {
+            auto scene = _activeScenes.find(id);
+            if (scene != _activeScenes.end() && !scene->second.IsExpired()
+                && scene->second.mapId == player->GetMapId()
+                && scene->second.instanceId == player->GetInstanceId())
+                return false;
+        }
+    std::vector<ProximityCandidate> candidates;
+    CollectNearbyNPCs(player,
+        sLLMChatterConfig->_proxChatterScanRadius, candidates);
+    return std::any_of(candidates.begin(), candidates.end(),
+        [player](ProximityCandidate const& candidate)
+        {
+            return !IsProximityCooldownActive(_entityCooldowns,
+                GetEntityCooldownKey(player, candidate),
+                sLLMChatterConfig->_proxChatterEntityCooldown, false);
+        });
+}
+
+bool QueueScreenshotProximity(Player* player, std::string const& token,
+    std::string const& observation)
+{
+    if (!CanQueueScreenshotProximity(player))
+        return false;
+    // The host already rolled screenshot chance. Only the shared ambient
+    // fatigue budget can reduce this opportunity further.
+    uint32 budget = ComputeFatiguedChance(player, 100);
+    if (!budget || (budget < 100 && urand(1, 100) > budget))
+        return false;
+    std::vector<ProximityCandidate> candidates;
+    CollectNearbyNPCs(player,
+        sLLMChatterConfig->_proxChatterScanRadius, candidates);
+    candidates.erase(std::remove_if(candidates.begin(), candidates.end(),
+        [player](ProximityCandidate const& candidate)
+        {
+            return IsProximityCooldownActive(_entityCooldowns,
+                GetEntityCooldownKey(player, candidate),
+                sLLMChatterConfig->_proxChatterEntityCooldown, false);
+        }), candidates.end());
+    DeduplicateCandidates(candidates);
+    if (candidates.empty())
+        return false;
+    std::shuffle(candidates.begin(), candidates.end(), _rng);
+    auto speakers = SelectCompatibleSpeakers(
+        candidates, &candidates.front(), 3);
+    bool conversation = speakers.size() >= 2 && urand(1, 100)
+        <= sLLMChatterConfig->_proxChatterConversationChance;
+    if (!conversation)
+        speakers.resize(1);
+    uint32 maxLines = conversation ? std::clamp<uint32>(
+        sLLMChatterConfig->_proxChatterMaxConversationLines, 2, 4) : 1;
+    bool addressed = urand(1, 100)
+        <= sLLMChatterConfig->_proxChatterPlayerAddressChance;
+    if (!QueueProximityEvent(player,
+            conversation ? "proximity_conversation" : "proximity_say",
+            speakers, candidates, addressed, maxLines,
+            "\"screenshot_token\":\"" + JsonEscape(token)
+                + "\",\"screenshot_observation\":" + observation))
+        return false;
+    for (auto const& speaker : speakers)
+        SetProximityCooldown(_entityCooldowns,
+            GetEntityCooldownKey(player, speaker));
+    return true;
+}
 
 bool IsProximityFightOnlookerEligible(
     Player* anchor, Player* bot,
