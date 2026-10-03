@@ -15,92 +15,6 @@ _SENTENCE_END = re.compile(
     r'[\u3002\uff01\uff1f]["\'\u300d\u300f]?'
 )
 
-_LEAKED_FIELD_START = re.compile(r'"(?:emote|action|thread)"\s*:')
-_LEAKED_FIELD_KEYS = frozenset(('emote', 'action', 'thread'))
-_BARE_THREAD_KEYS = frozenset((
-    'topic', 'energy', 'subject_changed', 'open_point', 'feelings',
-))
-
-
-def _is_bare_thread_report(value) -> bool:
-    """Recognize private thread metadata without its thread wrapper.
-
-    Require the three identifying fields together; a lone topic or
-    energy label could be ordinary speech. Optional fields must match
-    the wire types from THREAD_REPORT_OBJECT, not normalized state.
-    """
-    if not isinstance(value, dict) or not set(value) <= _BARE_THREAD_KEYS:
-        return False
-    if not isinstance(value.get('topic'), str):
-        return False
-    if not isinstance(value.get('subject_changed'), bool):
-        return False
-    energy = value.get('energy')
-    if not isinstance(energy, str) or energy not in (
-        'high', 'medium', 'low', 'spent',
-    ):
-        return False
-    if 'open_point' in value and not isinstance(value['open_point'], str):
-        return False
-    feelings = value.get('feelings', {})
-    return isinstance(feelings, dict) and all(
-        isinstance(name, str) and isinstance(feeling, str)
-        for name, feeling in feelings.items()
-    )
-
-
-def strip_leaked_response_fields(message: str) -> str:
-    """Remove response fields the model wrote inside the message.
-
-    The model sometimes escapes its remaining fields into the
-    message string, so the JSON stays valid and the scaffolding
-    would reach chat. Only a suffix that decodes as a JSON object
-    of known response fields (two or more, or a thread object) is
-    removed, so quoted labels in normal speech are kept. A complete
-    trailing bare thread report is also removed when its keys and
-    value types identify the private report contract.
-    """
-    if not message or '"' not in message:
-        return message
-    decoder = json.JSONDecoder()
-    # Some responses are plain dialogue followed by the report object,
-    # omitting both the message and thread wrappers. Decode the actual
-    # object and require end-of-input; do not guess at truncated JSON.
-    for match in re.finditer(r'\{', message):
-        try:
-            report, end = decoder.raw_decode(message, match.start())
-        except ValueError:
-            continue
-        if not message[end:].strip() and _is_bare_thread_report(report):
-            return message[:match.start()].rstrip().rstrip(',').rstrip()
-    for match in _LEAKED_FIELD_START.finditer(message):
-        start = match.start()
-        fields = None
-        # The leaked suffix may or may not close its own object.
-        for candidate in (
-            '{' + message[start:], '{' + message[start:] + '}',
-        ):
-            try:
-                fields, end = decoder.raw_decode(candidate)
-            except ValueError:
-                continue
-            if not candidate[end:].strip().strip('}').strip():
-                break
-            fields = None
-        if fields is None or not set(fields) <= _LEAKED_FIELD_KEYS:
-            continue
-        if len(fields) < 2 and not isinstance(
-            fields.get('thread'), dict
-        ):
-            continue
-        # The model may wrap the leaked fields in their own
-        # object, so drop its opening brace along with them.
-        kept = message[:start].rstrip()
-        if kept.endswith('{'):
-            kept = kept[:-1].rstrip()
-        return kept.rstrip(',').rstrip()
-    return message
-
 
 def _shorten_at_word_boundary(
     message: str,
@@ -230,7 +144,6 @@ def parse_single_response(response: str) -> dict:
             if isinstance(data, dict) and 'message' in data:
                 msg = data.get('message', '')
                 if isinstance(msg, str):
-                    msg = strip_leaked_response_fields(msg)
                     msg = msg.strip().strip('"')
                 else:
                     msg = str(msg).strip()
@@ -265,7 +178,7 @@ def parse_single_response(response: str) -> dict:
         except (json.JSONDecodeError, ValueError):
             decoded = raw
         return {
-            'message': strip_leaked_response_fields(decoded),
+            'message': decoded,
             'emote': None,
             'action': None,
         }
@@ -284,7 +197,6 @@ def parse_single_response(response: str) -> dict:
             decoded = json.loads(f'"{raw}"')
         except (json.JSONDecodeError, ValueError):
             decoded = raw
-        decoded = strip_leaked_response_fields(decoded)
         # Trim trailing partial-field artifacts like
         # ', "emote' or ', "action'
         decoded = re.sub(
@@ -307,7 +219,7 @@ def parse_single_response(response: str) -> dict:
         if m:
             msg = m.group(1).strip().strip('"').rstrip(',}')
     return {
-        'message': strip_leaked_response_fields(msg),
+        'message': msg,
         'emote': None,
         'action': None,
     }

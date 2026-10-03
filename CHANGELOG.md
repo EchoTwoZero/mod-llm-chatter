@@ -1,5 +1,15 @@
 # Changelog
 
+### 2026-10-03 - Revert Leaked-Field Parser Workarounds
+
+* **Chat parsing**: Remove the leaked `emote`, `action` and `thread`
+  field stripping and the bare thread report cleanup added earlier
+  today. The heuristics did not handle the range of malformed output
+  some models return and will be replaced by structured output. The
+  `BotSpeakerCooldownSeconds` default of 120 is unchanged.
+* **Upgrade**: Restart the chatter bridge. No rebuild or database
+  migration is required.
+
 ### 2026-10-03 - Screenshot Proximity and Private Metadata Cleanup
 
 * **Nearby NPC screenshot reactions**: Optionally trigger NPC statements
