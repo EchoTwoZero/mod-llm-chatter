@@ -323,8 +323,8 @@ that playerbots are ready synchronously:
    or a real Guild message cancels the greeting.
 5. One high-priority `guild_login_greeting` event carries the current
    session, target player, delay metadata, and live bot candidates.
-6. `chatter_guild_login.py` normally selects one greeter and
-   occasionally two or three. One LLM request generates the whole
+6. `chatter_guild_login.py` selects one to four greeters, with
+   equal odds for each count when four candidates are available. One LLM request generates the whole
    sequence as short, distinct, message-only Guild lines.
 7. The first line has no extra bridge-side delay because the C++ pending
    timer already supplied the human pause. Additional greeters reuse

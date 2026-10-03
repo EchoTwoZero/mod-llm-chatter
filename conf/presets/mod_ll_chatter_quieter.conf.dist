@@ -2553,18 +2553,19 @@ LLMChatter.GuildChatter.MaxReferenceLines = 2
 
 #
 #   LLMChatter.GuildChatter.LoginGreeting.MultiReplyChance
-#       Chance (0-100) that two or three Guild bots greet
-#       the player instead of the usual single greeting.
-#       Default: 20
+#       Chance (0-100) that two to four Guild bots greet
+#       the player instead of a single greeting. With four eligible
+#       bots and MaxResponders = 4, 75 gives each count equal odds.
+#       Default: 75
 #
-LLMChatter.GuildChatter.LoginGreeting.MultiReplyChance = 20
+LLMChatter.GuildChatter.LoginGreeting.MultiReplyChance = 75
 
 #
 #   LLMChatter.GuildChatter.LoginGreeting.MaxResponders
-#       Maximum greeting bots. Supported range is 1-3.
-#       Default: 3
+#       Maximum greeting bots. Supported range is 1-4.
+#       Default: 4
 #
-LLMChatter.GuildChatter.LoginGreeting.MaxResponders = 3
+LLMChatter.GuildChatter.LoginGreeting.MaxResponders = 4
 
 #
 #   LLMChatter.GuildChatter.LoginGreeting.PlayerNameChance
