@@ -1271,10 +1271,10 @@ PvP reactions stay in `LLMChatterDuel.cpp` and `LLMChatterGroupPvP.cpp`.
 - selected/named player `/say` routing before scene fallback
 - directed social-emote verbal events and synchronized per-player/NPC or
   per-player/ungrouped-bot cooldowns
-- mounted real players and mounted playerbots remain eligible for directed
-  `/say`, emotes, and active-scene replies; mounting still suppresses
-  automatic and untargeted new-scene selection, and an untargeted `/say`
-  speaker that mounts after queueing is rejected again at delivery
+- mounted real players and mounted playerbots remain eligible for player
+  `/say` (including untargeted new scenes), emotes, and active-scene
+  replies, both at selection and delivery; mounted players also hear
+  automatic nearby scenes and mounted bots can participate
 - policy-scoped weighted selection with one universal two-joiner cap:
   zero to two NPC joiners for NPC-directed scenes, or zero to two compatible
   NPC/ungrouped-bot joiners when an ungrouped bot is addressed

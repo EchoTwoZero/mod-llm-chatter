@@ -193,12 +193,6 @@ bool IsEligibleProximityAnchor(Player* player)
         && IsProximityMapAllowed(player->GetMap());
 }
 
-bool IsEligibleAmbientProximityAnchor(Player* player)
-{
-    return IsEligibleProximityAnchor(player)
-        && !player->IsMounted();
-}
-
 std::string GetNPCDisposition(
     Creature const* creature, Player const* player)
 {
@@ -1992,14 +1986,14 @@ DirectedSayResult QueueDirectedPlayerSayProximityEvent(
 void HandleProximityPlayerSayNewScene(
     Player* player, std::string const& safeMsg)
 {
-    if (!IsEligibleAmbientProximityAnchor(player))
+    if (!IsEligibleProximityAnchor(player))
         return;
 
     float radius = static_cast<float>(
         sLLMChatterConfig
             ->_proxChatterPlayerSayScanRadius);
     std::vector<ProximityCandidate> candidates;
-    CollectNearbyBots(player, radius, candidates, false);
+    CollectNearbyBots(player, radius, candidates, true);
     CollectNearbyNPCs(player, radius, candidates);
     DeduplicateCandidates(candidates);
 
@@ -2093,7 +2087,7 @@ void HandleProximityPlayerSayNewScene(
 
 void MaybeQueueProximityScene(Player* player)
 {
-    if (!IsEligibleAmbientProximityAnchor(player))
+    if (!IsEligibleProximityAnchor(player))
         return;
 
     uint32 effectiveChance =
@@ -2106,7 +2100,7 @@ void MaybeQueueProximityScene(Player* player)
         sLLMChatterConfig
             ->_proxChatterScanRadius);
     std::vector<ProximityCandidate> candidates;
-    CollectNearbyBots(player, radius, candidates, false);
+    CollectNearbyBots(player, radius, candidates, true);
     CollectNearbyNPCs(player, radius, candidates);
     DeduplicateCandidates(candidates);
 
@@ -2177,7 +2171,7 @@ void MaybeQueueProximityScene(Player* player)
 
 ProximityScene* FindBestScene(Player* player)
 {
-    if (!IsEligibleAmbientProximityAnchor(player))
+    if (!IsEligibleProximityAnchor(player))
         return nullptr;
 
     Map* map = player->GetMap();
@@ -2380,10 +2374,10 @@ bool IsProximityFightOnlookerEligible(
         return false;
     float radius = static_cast<float>(
         sLLMChatterConfig->_proxChatterScanRadius);
-    // Range, LOS, alive, not in combat, not mounted or
-    // flying, same map, session ready.
+    // Range, LOS, alive, not in combat or flying, same map,
+    // session ready. Ground-mounted spectators can still react.
     if (!IsEligibleProximityBotAnyTeam(
-            anchor, bot, radius, false))
+            anchor, bot, radius, true))
         return false;
     // Speech only from bots the player can read; emotes only
     // from the other faction.

@@ -1361,7 +1361,7 @@ The feature is gated by:
 - per-group per-zone cooldown
 - per-bot per-name cooldown
 - combat suppression
-- mounted/flying/BG suppression
+- flying/BG suppression (ground mounting does not block observations)
 
 ### Python handling
 
@@ -2921,15 +2921,14 @@ only the first speaker's cooldown key is stored with the event, so persisted
 lookups cannot represent joiner cooldowns. The addressed `/say` target remains
 unthrottled as before; targeted emote speech retains its dedicated pair
 cooldown.
-Mounted players and mounted playerbots remain eligible for directed
-interactions and active-scene replies. Mounting continues to suppress
-automatic scenes and untargeted fallback selection. Untargeted `/say` events
-share their event types with directed `/say`, so delivery uses the presence of
-`addressed_name` to preserve that distinction if a selected speaker mounts
-after queueing. The parser accepts both compact
-`{"addressed_name":"Bob"}` and MySQL-formatted
-`{"addressed_name": "Bob"}` JSON; missing and empty values remain
-untargeted. A mounted playerbot still sends the mirrored text-emote packet,
+Mounted players and mounted playerbots remain eligible for player-initiated
+`/say`, including untargeted speech that starts a new scene, as well as
+emotes and active-scene replies. Selection and delivery both allow mounting
+for these interactions and for automatic nearby conversations. Ground
+mounting also permits party observations of nearby points of interest,
+raid idle morale, and duel/PvP spectator reactions. Existing combat,
+flying, faction, range, visibility and cooldown rules remain in force.
+A mounted playerbot still sends the mirrored text-emote packet,
 although the client may suppress the corresponding character animation while
 the mount is displayed. Before the delayed packet is sent, the bot is
 rechecked for combat and the player is rechecked for presence, map, and range

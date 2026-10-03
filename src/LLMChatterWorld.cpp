@@ -912,8 +912,7 @@ private:
             if (!map || !map->IsRaid())
                 continue;
 
-            if (player->IsMounted()
-                || player->IsFlying())
+            if (player->IsFlying())
                 continue;
 
             Group* group = player->GetGroup();

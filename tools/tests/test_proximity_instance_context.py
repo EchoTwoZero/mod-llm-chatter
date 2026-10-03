@@ -1630,7 +1630,7 @@ def test_cpp_source_contracts_cover_instance_safety():
     assert directed < active_scene
 
 
-def test_mounted_actors_remain_eligible_for_direct_interactions():
+def test_mounted_actors_remain_eligible_for_proximity_interactions():
     source = (
         MODULE_DIR / 'src' / 'LLMChatterProximity.cpp'
     ).read_text(encoding='utf-8')
@@ -1639,11 +1639,6 @@ def test_mounted_actors_remain_eligible_for_direct_interactions():
     ).read_text(encoding='utf-8')
     anchor = source.split(
         'bool IsEligibleProximityAnchor(Player* player)', 1
-    )[1].split(
-        'bool IsEligibleAmbientProximityAnchor(Player* player)', 1
-    )[0]
-    ambient = source.split(
-        'bool IsEligibleAmbientProximityAnchor(Player* player)', 1
     )[1].split('std::string GetNPCDisposition(', 1)[0]
     directed_say = source.split(
         'DirectedSayResult QueueDirectedPlayerSayProximityEvent(', 1
@@ -1667,9 +1662,17 @@ def test_mounted_actors_remain_eligible_for_direct_interactions():
     ambient_scene = source.split(
         'void MaybeQueueProximityScene(Player* player)', 1
     )[1].split('ProximityScene* FindBestScene(', 1)[0]
+    untargeted_say = source.split(
+        'void HandleProximityPlayerSayNewScene(', 1
+    )[1].split('void MaybeQueueProximityScene(', 1)[0]
+
+    assert 'IsEligibleProximityAnchor(player)' in untargeted_say
+    assert 'IsEligibleAmbientProximityAnchor(player)' not in untargeted_say
+    assert 'CollectNearbyBots(player, radius, candidates, true)' in (
+        untargeted_say
+    )
 
     assert '!player->IsMounted()' not in anchor
-    assert '!player->IsMounted()' in ambient
     assert '!allowMounted && bot->IsMounted()' in bot_eligibility
     assert 'IsEligibleProximityAnchor(player)' in directed_say
     assert 'IsEligibleProximityAnchor(player)' in directed_emote
@@ -1681,31 +1684,21 @@ def test_mounted_actors_remain_eligible_for_direct_interactions():
     )
     assert 'IsEligibleProximityBot(' in directed_bot
     assert 'player, bot, radius, true' in directed_bot
-    assert 'CollectNearbyBots(player, radius, candidates, false)' in (
+    assert 'CollectNearbyBots(player, radius, candidates, true)' in (
         ambient_scene
     )
-    assert 'allowMountedProximityBot' in delivery
+    assert 'IsEligibleProximityAnchor(player)' in ambient_scene
+    assert 'anchorPlayer, bot, proximityRadius, true' in delivery
     assert 'eventType == "proximity_player_emote"' in delivery
     assert 'eventType == "proximity_player_say"' in delivery
     assert 'HasNonEmptyJsonString(' in delivery
-    assert 'eventExtraData, "addressed_name"' in delivery
     json_string_helper = delivery.split(
         'bool HasNonEmptyJsonString(', 1
     )[1].split('bool IsDirectedProximityEvent(', 1)[0]
     assert r'+ key + "\":";' in json_string_helper
     assert 'std::isspace(' in json_string_helper
     assert "json[pos] != '\"'" in json_string_helper
-    mounted_policy = delivery.split(
-        'bool addressedPlayerSay =', 1
-    )[1].split('float proximityRadius', 1)[0]
-    assert 'proximity_player_say' in mounted_policy
-    assert 'proximity_player_conversation' in mounted_policy
-    assert '&& HasNonEmptyJsonString(' in mounted_policy
-    assert 'proximity_player_emote' in mounted_policy
-    assert 'proximity_reply' in mounted_policy
-    assert source.count(
-        'IsEligibleAmbientProximityAnchor(player)'
-    ) == 3
+    assert 'IsEligibleAmbientProximityAnchor' not in source
 
 
 def test_unrelated_selection_does_not_suppress_nearby_replies():
@@ -1732,6 +1725,26 @@ def test_unrelated_selection_does_not_suppress_nearby_replies():
     )[1].split('if (!directedBoss && ambiguousFirstToken)', 1)[0]
     assert 'return messageNamesSelectedBoss;' in selected_boss
 
+
+def test_ground_mounting_allows_observations_morale_and_spectators():
+    nearby = (MODULE_DIR / 'src' / 'LLMChatterNearby.cpp').read_text(
+        encoding='utf-8')
+    world = (MODULE_DIR / 'src' / 'LLMChatterWorld.cpp').read_text(
+        encoding='utf-8')
+    proximity = (MODULE_DIR / 'src' / 'LLMChatterProximity.cpp').read_text(
+        encoding='utf-8')
+    morale = world.split('void CheckRaidIdleMorale()', 1)[1]
+    spectators = proximity.split(
+        'bool IsProximityFightOnlookerEligible(', 1
+    )[1].split('bool IsProximityFightBotOnCooldown(', 1)[0]
+    assert 'player->IsMounted()' not in nearby
+    assert 'player->IsMounted()' not in morale
+    assert 'player->IsFlying()' in nearby
+    assert 'player->IsInCombat()' in nearby
+    assert 'member->IsInCombat()' in morale
+    assert 'player->IsFlying()' in morale
+    assert 'anchor, bot, radius, true' in spectators
+    assert 'IsProximityFightFighter(bot, fighters)' in spectators
 
 
 def test_dungeon_boss_lookup_uses_registered_encounters():
