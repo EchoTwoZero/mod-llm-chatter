@@ -3564,9 +3564,11 @@ pacing.
 
 One high-priority `guild_login_greeting` event carries the current
 session, target player, delay band, and shuffled live candidates.
-`chatter_guild_login.py` normally selects one responder. On a
-`LoginGreeting.MultiReplyChance` success, it selects two or three,
-bounded by `LoginGreeting.MaxResponders` and available candidates.
+`chatter_guild_login.py` selects one responder, or two to four on a
+`LoginGreeting.MultiReplyChance` success, bounded by
+`LoginGreeting.MaxResponders` and available candidates. The defaults
+(75% multiple-greeter chance and a cap of four) give each count from
+one to four a 25% chance when at least four candidates are available.
 
 One LLM request generates the complete greeting sequence. Prompts:
 
@@ -3613,8 +3615,8 @@ duplicate greeting.
 | `LoginGreeting.RetryInterval` | 5 | Server | Bot readiness retry |
 | `LoginGreeting.ReadinessTimeout` | 90 | Server | Total bounded wait |
 | `LoginGreeting.MaxCandidates` | 12 | Server | Live candidate cap |
-| `LoginGreeting.MultiReplyChance` | 20 | Bridge | Multiple-greeter chance |
-| `LoginGreeting.MaxResponders` | 3 | Bridge | Greeter cap |
+| `LoginGreeting.MultiReplyChance` | 75 | Bridge | Multiple-greeter chance |
+| `LoginGreeting.MaxResponders` | 4 | Bridge | Greeter cap |
 | `LoginGreeting.PlayerNameChance` | 60 | Bridge | Primary name chance |
 | `LoginGreeting.MaxCharacters` | 100 | Bridge | Per-greeting hard cap |
 
