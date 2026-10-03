@@ -67,7 +67,10 @@ from chatter_shared import (  # noqa: E402
     build_anti_repetition_context,
     parse_conversation_response,
 )
-from chatter_text import parse_single_response  # noqa: E402
+from chatter_text import (  # noqa: E402
+    parse_single_response,
+    strip_leaked_response_fields,
+)
 
 GID = 42
 NAMES = ['Gruk', 'Mira']
@@ -492,6 +495,102 @@ def test_quoted_labels_in_speech_are_kept():
         conv = json.dumps([{'speaker': 'Gruk', 'message': text}])
         assert parse_conversation_response(
             conv, NAMES)[0]['message'] == text
+
+
+_BARE_THREAD = {
+    'topic': 'Guild humor',
+    'energy': 'medium',
+    'subject_changed': False,
+    'open_point': 'What jest will the guild share next?',
+    'feelings': {
+        'Grourrel': 'Wants to share a laugh while guarding against deceit.',
+    },
+}
+_GUILD_SPOKEN = (
+    'A priest’s humor should mend spirits, not wound them. Still, '
+    'I’ll trust the next jest—though I’ll keep one eye open!'
+)
+
+
+def _assert_cleaned_in_all_parsers(text, expected):
+    assert strip_leaked_response_fields(text) == expected
+    assert parse_single_response(text)['message'] == expected
+    encoded = json.dumps({'message': text})
+    for payload in (encoded, encoded[:-1], encoded[:-2]):
+        assert parse_single_response(payload)['message'] == expected
+    conversation = json.dumps([{'speaker': 'Gruk', 'message': text}])
+    parsed = parse_conversation_response(conversation, NAMES)
+    assert [entry['message'] for entry in parsed] == (
+        [expected] if expected else []
+    )
+
+
+def test_captured_guild_bare_thread_report_is_private():
+    # Captured guild_idle_chatter response: prose, then a bare report,
+    # with neither the message nor thread wrapper requested by the prompt.
+    text = _GUILD_SPOKEN + '\n' + json.dumps(_BARE_THREAD)
+    _assert_cleaned_in_all_parsers(text, _GUILD_SPOKEN)
+
+
+def test_braced_response_fields_leave_no_opening_brace():
+    for separator in (' ', ', ', '\n'):
+        text = _SPOKEN + separator + '{ "emote": "salute", "action": null}'
+        _assert_cleaned_in_all_parsers(text, _SPOKEN)
+    _assert_cleaned_in_all_parsers(
+        _SPOKEN + ' {"thread":' + json.dumps(_BARE_THREAD) + '}',
+        _SPOKEN,
+    )
+    # Remove only the metadata object's brace, not an earlier literal one.
+    _assert_cleaned_in_all_parsers(
+        _SPOKEN + ' {{"emote":null,"action":null}', _SPOKEN + ' {',
+    )
+
+
+def test_bare_thread_field_order_and_optional_fields():
+    reports = [
+        dict(reversed(list(_BARE_THREAD.items()))),
+        {key: _BARE_THREAD[key]
+         for key in ('topic', 'energy', 'subject_changed')},
+        dict(_BARE_THREAD, feelings={'Gruk': 'He said "wait" {quietly}.'}),
+    ]
+    for report in reports:
+        _assert_cleaned_in_all_parsers(
+            _SPOKEN + ', ' + json.dumps(report), _SPOKEN,
+        )
+
+
+def test_metadata_without_dialogue_does_not_become_speech():
+    _assert_cleaned_in_all_parsers(json.dumps(_BARE_THREAD), '')
+    _assert_cleaned_in_all_parsers('{"emote":null,"action":null}', '')
+
+
+def test_unrelated_or_invalid_bare_objects_are_kept():
+    objects = [
+        {'topic': 'Guild humor'},
+        {'topic': 'Guild humor', 'energy': 'medium'},
+        dict(_BARE_THREAD, energy='unknown'),
+        dict(_BARE_THREAD, subject_changed='false'),
+        dict(_BARE_THREAD, topic=12),
+        dict(_BARE_THREAD, open_point=[]),
+        dict(_BARE_THREAD, feelings=[]),
+        dict(_BARE_THREAD, feelings={'Gruk': 12}),
+        dict(_BARE_THREAD, unrelated='ordinary data'),
+        {'example': _BARE_THREAD},
+    ]
+    for obj in objects:
+        text = _SPOKEN + ' ' + json.dumps(obj)
+        assert strip_leaked_response_fields(text) == text
+        assert parse_single_response(json.dumps({'message': text}))[
+            'message'
+        ] == text
+    for text in (
+        'An ordinary trailing brace {',
+        'An ordinary [ bracket',
+        _SPOKEN + ' ' + json.dumps(_BARE_THREAD) + ' is an example.',
+        _SPOKEN + ' ' + json.dumps(_BARE_THREAD)[:-1],
+        _SPOKEN + ' {"emote":"salute"}',
+    ):
+        assert strip_leaked_response_fields(text) == text
 
 
 # ------------------------------------------------------------

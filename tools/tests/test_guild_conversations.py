@@ -219,7 +219,7 @@ def test_legacy_payload_normalizes_to_statement():
     }]
 
 
-def test_legacy_payload_processes_statement():
+def _assert_statement_response(response, expected):
     db = _DB()
     inserted = []
     event = {
@@ -246,9 +246,7 @@ def test_legacy_payload_processes_statement():
         patch.object(
             chatter_guild,
             'call_llm',
-            return_value=json.dumps({
-                'message': 'The guild has my greeting.',
-            }),
+            return_value=response,
         ),
         patch.object(
             chatter_guild,
@@ -282,7 +280,31 @@ def test_legacy_payload_processes_statement():
     assert len(inserted) == 1
     assert inserted[0]['bot_name'] == 'Aliss'
     assert inserted[0]['channel'] == 'guild'
+    assert inserted[0]['message'] == expected, inserted[0]['message']
     assert db.statuses[-1] == ('completed', 17)
+
+
+def test_legacy_payload_processes_statement():
+    text = 'The guild has my greeting.'
+    _assert_statement_response(json.dumps({'message': text}), text)
+
+
+def test_statement_queues_dialogue_without_bare_thread_report():
+    text = (
+        'A priest’s humor should mend spirits, not wound them. Still, '
+        'I’ll trust the next jest—though I’ll keep one eye open!'
+    )
+    response = text + '\n' + json.dumps({
+        'topic': 'Guild humor',
+        'energy': 'medium',
+        'subject_changed': False,
+        'open_point': 'What jest will the guild share next?',
+        'feelings': {
+            'Grourrel': 'Wants to share a laugh while guarding against deceit.',
+        },
+    })
+    # Normal chat cleanup also converts the em dash to a comma and space.
+    _assert_statement_response(response, text.replace('—', ', '))
 
 
 def test_structured_payload_caps_three_participants():
@@ -789,6 +811,7 @@ def main() -> int:
     tests = [
         test_legacy_payload_normalizes_to_statement,
         test_legacy_payload_processes_statement,
+        test_statement_queues_dialogue_without_bare_thread_report,
         test_structured_payload_caps_three_participants,
         test_history_context_miss_avoids_database_query,
         test_history_context_hit_loads_latest_visible_lines,

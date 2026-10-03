@@ -17,6 +17,36 @@ _SENTENCE_END = re.compile(
 
 _LEAKED_FIELD_START = re.compile(r'"(?:emote|action|thread)"\s*:')
 _LEAKED_FIELD_KEYS = frozenset(('emote', 'action', 'thread'))
+_BARE_THREAD_KEYS = frozenset((
+    'topic', 'energy', 'subject_changed', 'open_point', 'feelings',
+))
+
+
+def _is_bare_thread_report(value) -> bool:
+    """Recognize private thread metadata without its thread wrapper.
+
+    Require the three identifying fields together; a lone topic or
+    energy label could be ordinary speech. Optional fields must match
+    the wire types from THREAD_REPORT_OBJECT, not normalized state.
+    """
+    if not isinstance(value, dict) or not set(value) <= _BARE_THREAD_KEYS:
+        return False
+    if not isinstance(value.get('topic'), str):
+        return False
+    if not isinstance(value.get('subject_changed'), bool):
+        return False
+    energy = value.get('energy')
+    if not isinstance(energy, str) or energy not in (
+        'high', 'medium', 'low', 'spent',
+    ):
+        return False
+    if 'open_point' in value and not isinstance(value['open_point'], str):
+        return False
+    feelings = value.get('feelings', {})
+    return isinstance(feelings, dict) and all(
+        isinstance(name, str) and isinstance(feeling, str)
+        for name, feeling in feelings.items()
+    )
 
 
 def strip_leaked_response_fields(message: str) -> str:
@@ -26,11 +56,23 @@ def strip_leaked_response_fields(message: str) -> str:
     message string, so the JSON stays valid and the scaffolding
     would reach chat. Only a suffix that decodes as a JSON object
     of known response fields (two or more, or a thread object) is
-    removed, so quoted labels in normal speech are kept.
+    removed, so quoted labels in normal speech are kept. A complete
+    trailing bare thread report is also removed when its keys and
+    value types identify the private report contract.
     """
     if not message or '"' not in message:
         return message
     decoder = json.JSONDecoder()
+    # Some responses are plain dialogue followed by the report object,
+    # omitting both the message and thread wrappers. Decode the actual
+    # object and require end-of-input; do not guess at truncated JSON.
+    for match in re.finditer(r'\{', message):
+        try:
+            report, end = decoder.raw_decode(message, match.start())
+        except ValueError:
+            continue
+        if not message[end:].strip() and _is_bare_thread_report(report):
+            return message[:match.start()].rstrip().rstrip(',').rstrip()
     for match in _LEAKED_FIELD_START.finditer(message):
         start = match.start()
         fields = None
@@ -51,7 +93,12 @@ def strip_leaked_response_fields(message: str) -> str:
             fields.get('thread'), dict
         ):
             continue
-        return message[:start].rstrip().rstrip(',').rstrip()
+        # The model may wrap the leaked fields in their own
+        # object, so drop its opening brace along with them.
+        kept = message[:start].rstrip()
+        if kept.endswith('{'):
+            kept = kept[:-1].rstrip()
+        return kept.rstrip(',').rstrip()
     return message
 
 
