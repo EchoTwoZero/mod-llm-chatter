@@ -1104,7 +1104,7 @@ LLMChatter.ProximityChatter.OutdoorChance = 15
 #       default because combat and movement remove many opportunities.
 #       Default: 100
 #
-LLMChatter.ProximityChatter.InstanceChance = 100
+LLMChatter.ProximityChatter.InstanceChance = 50
 
 #
 #   LLMChatter.ProximityChatter.EntityCooldown
