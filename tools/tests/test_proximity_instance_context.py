@@ -1708,6 +1708,32 @@ def test_mounted_actors_remain_eligible_for_direct_interactions():
     ) == 3
 
 
+def test_unrelated_selection_does_not_suppress_nearby_replies():
+    source = (MODULE_DIR / 'src' / 'LLMChatterProximity.cpp').read_text(
+        encoding='utf-8')
+    selected = source.split(
+        'SelectedCandidateMatch FindSelectedCandidate(', 1
+    )[1].split('NamedCandidateMatch FindNamedCandidate(', 1)[0]
+    assert 'FindNameWithBoundary(' in selected
+    assert 'ToLowerAscii(selectedIdentity.name)' in selected
+    assert 'ExtractNameTokens(selectedIdentity.name)' in selected
+    assert 'IsCandidateTokenExcluded(selectedIdentity, token)' in selected
+    assert 'IsUniqueCandidateToken(candidates, selectedIdentity, token)' in selected
+    assert 'selectedIdentity.subName = tmpl->SubName' in selected
+    for reason in ('selected_living_player', 'selected_party_bot',
+                   'selected_boss_not_routed', 'selected_npc_ineligible',
+                   'selected_bot_ineligible'):
+        assert f'nullptr, namesSelected, "{reason}"' in selected
+    assert 'nullptr, true,' not in selected
+    boss = (MODULE_DIR / 'src' / 'LLMChatterBossDialogue.cpp').read_text(
+        encoding='utf-8')
+    selected_boss = boss.split(
+        'if (!directedBoss && selectedNearbyBoss)', 1
+    )[1].split('if (!directedBoss && ambiguousFirstToken)', 1)[0]
+    assert 'return messageNamesSelectedBoss;' in selected_boss
+
+
+
 def test_dungeon_boss_lookup_uses_registered_encounters():
     shared = (
         MODULE_DIR / 'tools' / 'chatter_shared.py'

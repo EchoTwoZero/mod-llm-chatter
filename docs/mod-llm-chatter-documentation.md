@@ -2889,7 +2889,9 @@ preferred joiner rather than automatically replacing the selected addressee.
 An ineligible cross-faction named bot falls back only to an already selected
 eligible NPC or same-team ungrouped bot; otherwise the direct route is
 suppressed. A living selected player, party bot, boss, or runtime-ineligible
-speaking NPC suppresses random fallback with a diagnostic reason. Dead and
+speaking NPC only suppresses fallback when named by full name or a unique
+meaningful name token in the message.
+An unrelated selection no longer prevents nearby replies. Dead and
 non-speaking targets such as corpses and critters are ignored, allowing
 normal fallback. The
 `ProximityScene` struct tracks:

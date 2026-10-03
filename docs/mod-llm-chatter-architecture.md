@@ -142,7 +142,10 @@ NPCs, and real players as they move through the world:
    ineligible cross-faction named bot falls back only to an already selected
    eligible NPC or bot; otherwise the direct route is suppressed. A living
    selected player, party bot, boss, or runtime-ineligible speaking NPC
-   suppresses random fallback; dead and non-speaking targets are ignored.
+   only suppresses fallback when the message names that selected target by
+   full name or a unique meaningful name token. An unrelated selection
+   permits ordinary nearby replies. Dead and
+   non-speaking targets are ignored.
    With no direct addressee, recent-scene and ordinary nearby fallback
    behavior remains available.
 9. A social emote directed at an eligible NPC has its own verbal-reaction
