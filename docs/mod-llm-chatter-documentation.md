@@ -1361,7 +1361,7 @@ The feature is gated by:
 - per-group per-zone cooldown
 - per-bot per-name cooldown
 - combat suppression
-- mounted/flying/BG suppression
+- flying/BG suppression (ground mounting does not block observations)
 
 ### Python handling
 
@@ -2889,7 +2889,9 @@ preferred joiner rather than automatically replacing the selected addressee.
 An ineligible cross-faction named bot falls back only to an already selected
 eligible NPC or same-team ungrouped bot; otherwise the direct route is
 suppressed. A living selected player, party bot, boss, or runtime-ineligible
-speaking NPC suppresses random fallback with a diagnostic reason. Dead and
+speaking NPC only suppresses fallback when named by full name or a unique
+meaningful name token in the message.
+An unrelated selection no longer prevents nearby replies. Dead and
 non-speaking targets such as corpses and critters are ignored, allowing
 normal fallback. The
 `ProximityScene` struct tracks:
@@ -2919,15 +2921,14 @@ only the first speaker's cooldown key is stored with the event, so persisted
 lookups cannot represent joiner cooldowns. The addressed `/say` target remains
 unthrottled as before; targeted emote speech retains its dedicated pair
 cooldown.
-Mounted players and mounted playerbots remain eligible for directed
-interactions and active-scene replies. Mounting continues to suppress
-automatic scenes and untargeted fallback selection. Untargeted `/say` events
-share their event types with directed `/say`, so delivery uses the presence of
-`addressed_name` to preserve that distinction if a selected speaker mounts
-after queueing. The parser accepts both compact
-`{"addressed_name":"Bob"}` and MySQL-formatted
-`{"addressed_name": "Bob"}` JSON; missing and empty values remain
-untargeted. A mounted playerbot still sends the mirrored text-emote packet,
+Mounted players and mounted playerbots remain eligible for player-initiated
+`/say`, including untargeted speech that starts a new scene, as well as
+emotes and active-scene replies. Selection and delivery both allow mounting
+for these interactions and for automatic nearby conversations. Ground
+mounting also permits party observations of nearby points of interest,
+raid idle morale, and duel/PvP spectator reactions. Existing combat,
+flying, faction, range, visibility and cooldown rules remain in force.
+A mounted playerbot still sends the mirrored text-emote packet,
 although the client may suppress the corresponding character animation while
 the mount is displayed. Before the delayed packet is sent, the bot is
 rechecked for combat and the player is rechecked for presence, map, and range
@@ -3060,6 +3061,21 @@ Roster entries identify each participant as `NPC` or
 to playerbots. Uses global `EmoteChance` and `ActionChance` gates (not
 custom proximity-specific ones).
 
+### Conversation pacing
+
+Ordinary, directed `/say`, and multi-speaker emote conversations share
+`chatter_proximity_pacing.py`. The first generated line has no added wait.
+Subsequent gaps use the longer of the current and previous visible lines,
+allowing reading and composing to overlap. The default base is 3 seconds
+plus that length divided by 20, capped at 8 seconds. Each gap varies by
+up to 20%, sampled within the 3-8-second bounds so even long lines vary.
+A four-line scene therefore finishes within 24 seconds after its first
+scheduled line; generation latency and delivery polling are additional.
+Emote-only lines retain the minimum breathing room. Existing delivery-time
+range and scene checks still apply. Disable `DynamicPacing.Enable` to
+restore the fixed `ConversationLineDelay`. Restart the chatter bridge
+when changing these Python-owned settings.
+
 ### C++ ownership
 
 | File | Responsibility |
@@ -3079,6 +3095,7 @@ custom proximity-specific ones).
 | File | Responsibility |
 |------|----------------|
 | `chatter_proximity.py` | Ordinary/directed handlers, prompts, strict parser, and addressed history |
+| `chatter_proximity_pacing.py` | Bounded length-aware gaps for nearby conversation sequences |
 | `chatter_instance_context.py` | Shared instance location/lore grounding |
 | `chatter_boss_dialogue.py` | Safe one-line boss prompt and `myell` insertion |
 | `chatter_constants.py` | `PROXIMITY_CHAT_TOPICS` (250+ entries) |
@@ -3116,7 +3133,12 @@ All under `LLMChatter.ProximityChatter.*`:
 | `EntityCooldown` | 3 | Seconds per-entity (spawn GUID) cooldown; clamped to 0-3 |
 | `PlayerAddressChance` | 30 | % chance to address the real player |
 | `MaxConversationLines` | 4 | Maximum ambient lines |
-| `ConversationLineDelay` | 2 | Seconds between lines |
+| `ConversationLineDelay` | 2 | Fixed gap when dynamic pacing is disabled |
+| `DynamicPacing.Enable` | 1 | Bridge: length-aware conversation gaps |
+| `DynamicPacing.MinSeconds` | 3 | Minimum inter-line gap |
+| `DynamicPacing.MaxSeconds` | 8 | Maximum inter-line gap |
+| `DynamicPacing.CharsPerSecond` | 20 | Length contribution rate |
+| `DynamicPacing.JitterPercent` | 20 | Random variation within gap bounds |
 | `ReplyWindowSeconds` | 30 | How long a scene accepts replies |
 | `ReplyMaxTurns` | 5 | Maximum tracked scene turns |
 | `EnableBossDialogue` | 0 | Boss path; enable for controlled testing |

@@ -123,7 +123,11 @@ NPCs, and real players as they move through the world:
    and curated dungeon-lore grounding. NPC payloads also carry
    disposition, creature rank, creature type, and qualification reason.
 6. Messages are written to `llm_chatter_messages` with channel
-   `"say"` (for bots) or `"msay"` (for NPCs).
+   `"say"` (for bots) or `"msay"` (for NPCs). Ordinary, directed speech,
+   and emote conversations use `chatter_proximity_pacing.py` for bounded
+   length-aware gaps with subtle RNG (default 3-8 seconds). The first line
+   has no added wait. Bridge-owned `DynamicPacing.*` settings control this;
+   disabling them restores the event's fixed `line_delay_seconds`.
 7. C++ delivery dispatches bot messages via `CHAT_MSG_SAY` and NPC
    messages via `CHAT_MSG_MONSTER_SAY` (speech bubbles). Movement never
    disqualifies a speaker. Only NPCs whose spawn never moves may rotate:
@@ -142,7 +146,10 @@ NPCs, and real players as they move through the world:
    ineligible cross-faction named bot falls back only to an already selected
    eligible NPC or bot; otherwise the direct route is suppressed. A living
    selected player, party bot, boss, or runtime-ineligible speaking NPC
-   suppresses random fallback; dead and non-speaking targets are ignored.
+   only suppresses fallback when the message names that selected target by
+   full name or a unique meaningful name token. An unrelated selection
+   permits ordinary nearby replies. Dead and
+   non-speaking targets are ignored.
    With no direct addressee, recent-scene and ordinary nearby fallback
    behavior remains available.
 9. A social emote directed at an eligible NPC has its own verbal-reaction
@@ -1268,10 +1275,10 @@ PvP reactions stay in `LLMChatterDuel.cpp` and `LLMChatterGroupPvP.cpp`.
 - selected/named player `/say` routing before scene fallback
 - directed social-emote verbal events and synchronized per-player/NPC or
   per-player/ungrouped-bot cooldowns
-- mounted real players and mounted playerbots remain eligible for directed
-  `/say`, emotes, and active-scene replies; mounting still suppresses
-  automatic and untargeted new-scene selection, and an untargeted `/say`
-  speaker that mounts after queueing is rejected again at delivery
+- mounted real players and mounted playerbots remain eligible for player
+  `/say` (including untargeted new scenes), emotes, and active-scene
+  replies, both at selection and delivery; mounted players also hear
+  automatic nearby scenes and mounted bots can participate
 - policy-scoped weighted selection with one universal two-joiner cap:
   zero to two NPC joiners for NPC-directed scenes, or zero to two compatible
   NPC/ungrouped-bot joiners when an ungrouped bot is addressed

@@ -1243,10 +1243,26 @@ LLMChatter.ProximityChatter.MaxConversationLines = 4
 
 #
 #   LLMChatter.ProximityChatter.ConversationLineDelay
-#       Seconds between proximity conversation lines.
+#       Fixed seconds between lines when DynamicPacing.Enable = 0.
 #       Default: 2
 #
 LLMChatter.ProximityChatter.ConversationLineDelay = 2
+
+#
+#   LLMChatter.ProximityChatter.DynamicPacing.* [BRIDGE]
+#       Length-aware gaps between nearby conversation lines. The first
+#       line has no added delay. Reading and typing overlap: the longer
+#       of the previous and current visible lines sets the length term.
+#       MinSeconds + characters / CharsPerSecond sets the base gap,
+#       bounded by MaxSeconds, with JitterPercent variation inside bounds.
+#       Defaults: enabled, 3-8 seconds, 20 chars/sec, 20% variation.
+#       Set Enable = 0 to use ConversationLineDelay instead.
+#
+LLMChatter.ProximityChatter.DynamicPacing.Enable = 1
+LLMChatter.ProximityChatter.DynamicPacing.MinSeconds = 3
+LLMChatter.ProximityChatter.DynamicPacing.MaxSeconds = 8
+LLMChatter.ProximityChatter.DynamicPacing.CharsPerSecond = 20
+LLMChatter.ProximityChatter.DynamicPacing.JitterPercent = 20
 
 #
 #   LLMChatter.ProximityChatter.ReplyWindowSeconds

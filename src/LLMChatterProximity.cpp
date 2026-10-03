@@ -193,12 +193,6 @@ bool IsEligibleProximityAnchor(Player* player)
         && IsProximityMapAllowed(player->GetMap());
 }
 
-bool IsEligibleAmbientProximityAnchor(Player* player)
-{
-    return IsEligibleProximityAnchor(player)
-        && !player->IsMounted();
-}
-
 std::string GetNPCDisposition(
     Creature const* creature, Player const* player)
 {
@@ -914,7 +908,8 @@ struct SelectedCandidateMatch
 
 SelectedCandidateMatch FindSelectedCandidate(
     Player* player,
-    std::vector<ProximityCandidate> const& candidates)
+    std::vector<ProximityCandidate> const& candidates,
+    std::string const& message)
 {
     if (!player)
         return {};
@@ -932,12 +927,41 @@ SelectedCandidateMatch FindSelectedCandidate(
         return {};
     }
 
+    // A selection alone is not conversational intent when that target
+    // cannot answer here. Preserve ownership for explicitly named targets.
+    ProximityCandidate selectedIdentity;
+    selectedIdentity.name = selected->GetName();
+    if (Creature* creature = selected->ToCreature())
+    {
+        selectedIdentity.isNPC = true;
+        selectedIdentity.id = creature->GetSpawnId();
+        if (CreatureTemplate const* tmpl = creature->GetCreatureTemplate())
+            selectedIdentity.subName = tmpl->SubName;
+    }
+    else
+        selectedIdentity.id = selected->GetGUID().GetCounter();
+
+    std::string messageLower = ToLowerAscii(message);
+    bool namesSelected = FindNameWithBoundary(
+        messageLower, ToLowerAscii(selectedIdentity.name))
+        != std::string::npos;
+    for (std::string const& token : ExtractNameTokens(selectedIdentity.name))
+    {
+        if (!IsCandidateTokenExcluded(selectedIdentity, token)
+            && IsUniqueCandidateToken(candidates, selectedIdentity, token)
+            && FindNameWithBoundary(messageLower, token) != std::string::npos)
+        {
+            namesSelected = true;
+            break;
+        }
+    }
+
     if (Player* selectedPlayer = selected->ToPlayer())
     {
         if (!IsPlayerBot(selectedPlayer))
         {
             return {
-                nullptr, true, "selected_living_player",
+                nullptr, namesSelected, "selected_living_player",
             };
         }
 
@@ -945,7 +969,7 @@ SelectedCandidateMatch FindSelectedCandidate(
                 selectedPlayer, player->GetGroup()))
         {
             return {
-                nullptr, true, "selected_party_bot",
+                nullptr, namesSelected, "selected_party_bot",
             };
         }
 
@@ -958,9 +982,9 @@ SelectedCandidateMatch FindSelectedCandidate(
             }
         }
 
-        // A non-party playerbot that is currently ineligible
-        // is ignored like any other non-speaking target.
-        return {};
+        return {
+            nullptr, namesSelected, "selected_bot_ineligible",
+        };
     }
 
     Creature* selectedCreature =
@@ -971,7 +995,7 @@ SelectedCandidateMatch FindSelectedCandidate(
     if (IsLLMChatterBoss(selectedCreature))
     {
         return {
-            nullptr, true, "selected_boss_not_routed",
+            nullptr, namesSelected, "selected_boss_not_routed",
         };
     }
 
@@ -992,7 +1016,7 @@ SelectedCandidateMatch FindSelectedCandidate(
     }
 
     return {
-        nullptr, true, "selected_npc_ineligible",
+        nullptr, namesSelected, "selected_npc_ineligible",
     };
 }
 
@@ -1839,7 +1863,7 @@ DirectedSayResult QueueDirectedPlayerSayProximityEvent(
     NamedCandidateMatch named =
         FindNamedCandidate(player, nonParty, safeMsg);
     SelectedCandidateMatch selectedMatch =
-        FindSelectedCandidate(player, nonParty);
+        FindSelectedCandidate(player, nonParty, safeMsg);
     bool explicitNamedOverride =
         named.candidate && named.vocative;
     if (selectedMatch.suppress
@@ -1962,14 +1986,14 @@ DirectedSayResult QueueDirectedPlayerSayProximityEvent(
 void HandleProximityPlayerSayNewScene(
     Player* player, std::string const& safeMsg)
 {
-    if (!IsEligibleAmbientProximityAnchor(player))
+    if (!IsEligibleProximityAnchor(player))
         return;
 
     float radius = static_cast<float>(
         sLLMChatterConfig
             ->_proxChatterPlayerSayScanRadius);
     std::vector<ProximityCandidate> candidates;
-    CollectNearbyBots(player, radius, candidates, false);
+    CollectNearbyBots(player, radius, candidates, true);
     CollectNearbyNPCs(player, radius, candidates);
     DeduplicateCandidates(candidates);
 
@@ -2063,7 +2087,7 @@ void HandleProximityPlayerSayNewScene(
 
 void MaybeQueueProximityScene(Player* player)
 {
-    if (!IsEligibleAmbientProximityAnchor(player))
+    if (!IsEligibleProximityAnchor(player))
         return;
 
     uint32 effectiveChance =
@@ -2076,7 +2100,7 @@ void MaybeQueueProximityScene(Player* player)
         sLLMChatterConfig
             ->_proxChatterScanRadius);
     std::vector<ProximityCandidate> candidates;
-    CollectNearbyBots(player, radius, candidates, false);
+    CollectNearbyBots(player, radius, candidates, true);
     CollectNearbyNPCs(player, radius, candidates);
     DeduplicateCandidates(candidates);
 
@@ -2147,7 +2171,7 @@ void MaybeQueueProximityScene(Player* player)
 
 ProximityScene* FindBestScene(Player* player)
 {
-    if (!IsEligibleAmbientProximityAnchor(player))
+    if (!IsEligibleProximityAnchor(player))
         return nullptr;
 
     Map* map = player->GetMap();
@@ -2350,10 +2374,10 @@ bool IsProximityFightOnlookerEligible(
         return false;
     float radius = static_cast<float>(
         sLLMChatterConfig->_proxChatterScanRadius);
-    // Range, LOS, alive, not in combat, not mounted or
-    // flying, same map, session ready.
+    // Range, LOS, alive, not in combat or flying, same map,
+    // session ready. Ground-mounted spectators can still react.
     if (!IsEligibleProximityBotAnyTeam(
-            anchor, bot, radius, false))
+            anchor, bot, radius, true))
         return false;
     // Speech only from bots the player can read; emotes only
     // from the other faction.
