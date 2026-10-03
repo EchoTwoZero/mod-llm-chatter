@@ -11,6 +11,9 @@ log = logging.getLogger(__name__)
 def request_ticket(db, account_id, timeout_seconds):
     """Reserve one expiring account slot and wait for world-thread preflight."""
     token = uuid.uuid4().hex
+    started = time.monotonic()
+    log.info('Proximity preflight: reserving account=%s, request=%s, '
+             'timeout=%ss', account_id, token[:8], timeout_seconds)
     cursor = db.cursor(dictionary=True)
     try:
         cursor.execute(
@@ -32,6 +35,8 @@ def request_ticket(db, account_id, timeout_seconds):
             log.info('Screenshot proximity slot busy; skipping')
             return None
         deadline = time.monotonic() + timeout_seconds
+        log.info('Proximity preflight: reserved; waiting for live server '
+                 'player/NPC eligibility checks')
         while time.monotonic() < deadline:
             cursor.execute(
                 "SELECT state, player_guid FROM llm_screenshot_proximity "
@@ -50,6 +55,9 @@ def request_ticket(db, account_id, timeout_seconds):
                          'NPC eligibility, cooldown or active-scene gate')
                 return None
             if row['state'] == 'ready' and row['player_guid']:
+                log.info('Proximity preflight approved in %.2fs: player=%s, '
+                         'request=%s', time.monotonic() - started,
+                         row['player_guid'], token[:8])
                 return (account_id, token)
             time.sleep(0.1)
         log.info('Screenshot proximity preflight timed out waiting for '
@@ -77,6 +85,10 @@ def publish_observation(db, ticket, description):
         db.commit()
         if not published:
             log.info('Screenshot proximity ticket expired or replaced; skipping')
+        else:
+            log.info('Proximity observation published: request=%s; '
+                     'server revalidation, NPC generation and delivery '
+                     'are still pending', ticket[1][:8])
         return published
     finally:
         cursor.close()

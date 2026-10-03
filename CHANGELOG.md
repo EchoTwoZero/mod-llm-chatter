@@ -1,5 +1,16 @@
 # Changelog
 
+### 2026-10-03 - Screenshot Cycle Diagnostics
+
+* **Host agent logging**: Show each cycle's randomized wait and next
+  check time, capture and proximity rolls, foreground-window checks,
+  Party recipients, and server preflight approval or rejection.
+* **Capture pipeline**: Report image size, capture and vision durations,
+  Party deduplication and observation publication. Successful publication
+  is explicitly distinct from NPC generation and speech delivery.
+* **Upgrade**: Restart the host screenshot agent. No rebuild, database
+  migration or server config reload is required.
+
 ### 2026-10-03 - Revert Leaked-Field Parser Workarounds
 
 * **Chat parsing**: Remove the leaked `emote`, `action` and `thread`
