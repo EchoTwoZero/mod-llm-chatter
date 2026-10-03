@@ -1,5 +1,32 @@
 # Changelog
 
+### 2026-10-03 - Screenshot Proximity and Private Metadata Cleanup
+
+* **Nearby NPC screenshot reactions**: Optionally trigger NPC statements
+  or conversations from the same visual observation used by Party.
+  Party and proximity are independent, and solo players are supported.
+  Requires an explicit `Screenshot.BoundAccountId`; proximity defaults
+  to disabled with a 30% chance after the existing capture-cycle roll.
+* **Live scene validation**: Server preflight checks nearby NPC eligibility
+  within the configured proximity scan radius. Session, map, instance,
+  movement and NPC eligibility are rechecked before delayed delivery.
+  Existing proximity conversation pacing and ambient limits apply.
+* **Visual grounding**: NPCs react in-world to the supplied surroundings
+  without unrelated random topics or identifying speakers from pixels.
+  Ordinary proximity weather handling is unchanged.
+* **Screenshot diagnostics**: Distinguish chance-roll skips, missing
+  account binding, server rejection and preflight expiry instead of
+  reporting every skipped cycle as having no recipients.
+* **Private JSON cleanup**: Remove complete trailing bare thread reports
+  and the opening brace of wrapped response metadata from dialogue.
+  Preserve unrelated objects, incomplete JSON and ordinary quoted labels.
+* **Upgrade**: Apply
+  `data/sql/characters/updates/20261003_screenshot_proximity.sql` to the
+  characters database, regenerate CMake for the new source, rebuild and
+  install worldserver, and restart the chatter bridge and screenshot
+  agent. Configure the account binding and opt-in proximity setting, then
+  reload server config. Fresh installations include the mailbox table.
+
 ### 2026-10-03 - Chat Parsing and Ambient Speaker Pacing
 
 * **Chat parsing**: When the model writes its `emote`, `action` or

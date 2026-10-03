@@ -680,8 +680,17 @@ def _do_capture_cycle(
     except Exception:
         log.exception('Screenshot Party eligibility failed')
 
-    if (config.get('proximity_enable') and account_id
-            and random.randint(1, 100) <= config['proximity_chance']):
+    proximity_attempt = False
+    proximity_reason = 'disabled'
+    if config.get('proximity_enable'):
+        if not account_id:
+            proximity_reason = 'no account binding'
+        elif random.randint(1, 100) > config['proximity_chance']:
+            proximity_reason = 'chance roll skipped; NPC eligibility not checked'
+        else:
+            proximity_attempt = True
+            proximity_reason = 'no server ticket (see preflight log)'
+    if proximity_attempt:
         try:
             db = get_db_connection(config)
             try:
@@ -690,10 +699,12 @@ def _do_capture_cycle(
             finally:
                 db.close()
         except Exception:
+            proximity_reason = 'preflight error'
             log.exception('Screenshot proximity preflight failed')
 
     if group_info is None and ticket is None:
-        log.info("No eligible screenshot recipients, skipping")
+        log.info('Screenshot skipped: no Party recipient; proximity: %s',
+                 proximity_reason)
         return
 
     # -- Capture and analyze --

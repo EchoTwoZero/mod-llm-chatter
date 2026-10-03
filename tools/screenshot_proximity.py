@@ -41,12 +41,19 @@ def request_ticket(db, account_id, timeout_seconds):
             row = cursor.fetchone()
             # End the read transaction so subsequent polls see server updates.
             db.commit()
-            if not row or row['state'] == 'consumed':
+            if not row:
+                log.info('Screenshot proximity request expired or was replaced '
+                         'before approval; check worldserver config reload')
+                return None
+            if row['state'] == 'consumed':
+                log.info('Screenshot proximity rejected by server: player, '
+                         'NPC eligibility, cooldown or active-scene gate')
                 return None
             if row['state'] == 'ready' and row['player_guid']:
                 return (account_id, token)
             time.sleep(0.1)
-        log.info('Screenshot proximity preflight timed out')
+        log.info('Screenshot proximity preflight timed out waiting for '
+                 'worldserver; check config reload and server availability')
         return None
     finally:
         cursor.close()
