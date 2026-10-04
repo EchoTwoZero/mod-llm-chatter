@@ -1,5 +1,14 @@
 # Changelog
 
+### 2026-10-04 - Structured Output Setup Guide
+
+* **README**: Recommend structured output on compatible endpoints and
+  explain its formatting reliability, on/off behavior, model requirements
+  and handling of rejected responses.
+* **Dependencies**: Document automatic installation for the Docker bridge,
+  separate host screenshot-agent requirements, the missing-validator error,
+  and the Python process restarts needed to enable or disable the feature.
+
 ### 2026-10-03 - Optional Native Structured Output
 
 * **Global switch**: Add `LLMChatter.StructuredOutput.Enable`, default `0`,
