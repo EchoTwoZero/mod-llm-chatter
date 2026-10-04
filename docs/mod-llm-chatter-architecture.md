@@ -1171,6 +1171,10 @@ instead of rendering it as a `/slash` command.
 - `AppendRaidContext()`
 - `GroupHasBots()`
 - `CanSpeakInGeneralChannel()`
+- `IsPlayerInChannel()` checks exact channel membership for General
+  eligibility and delivery. Core exposes no public membership accessor;
+  a read-only adapter accesses Player's protected joined-channel list
+  through a base-member pointer, without casting Player to a derived type.
 - `GetTextEmoteName()` — reverse emote ID-to-name lookup (170+ entries)
 - `SendUnitTextEmote(Unit*, uint32, const std::string&)` — consolidated
   emote packet helper; `SendBotTextEmote` overloads delegate to it

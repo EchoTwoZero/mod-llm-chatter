@@ -1,5 +1,23 @@
 # Changelog
 
+### 2026-10-04 - Playerbot Core Compatibility
+
+* **Bot identification**: Use headless sessions to identify playerbots
+  after upstream removed `WorldSession::IsBot()`. Preserve the existing
+  AI fallback and treatment of player-controlled self-bots.
+* **General channel membership**: Replace the removed
+  `Player::IsInChannel()` calls with a shared, read-only check of the
+  player's joined channels. Eligibility and delivery require membership
+  in the exact channel; eligibility continues searching past matching
+  channels the bot has not joined. No core patch is required.
+* **Documentation**: Explain the membership helper in the architecture
+  guide and remind users in the README to keep both upstream dependencies
+  up to date as chatter is frequently re-aligned with them.
+* **Upgrade**: Update AzerothCore's Playerbot branch and mod-playerbots
+  together, then rebuild, install, and restart worldserver. Older cores
+  without `WorldSession::IsHeadless()` are no longer supported. This
+  chatter fix adds no database migration or configuration changes.
+
 ### 2026-10-03 - Screenshot Cycle Diagnostics
 
 * **Host agent logging**: Show each cycle's randomized wait and next
