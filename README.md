@@ -78,6 +78,13 @@ See [Setup](#setup) below for detailed Docker, non-Docker, and SQL preparation s
 
 ## Compatibility
 
+> **Keep upstream dependencies up to date.** Always keep both
+> [AzerothCore's Playerbot branch](https://github.com/mod-playerbots/azerothcore-wotlk/tree/Playerbot)
+> and [mod-playerbots](https://github.com/mod-playerbots/mod-playerbots)
+> up to date when updating mod-llm-chatter. This module is frequently
+> re-aligned with those upstream branches; older versions may no longer
+> compile or work correctly with the latest chatter release.
+
 This module requires a working AzerothCore server with mod-playerbots. If you don't have one yet, start here:
 
 - [AzerothCore Docker install guide](https://www.azerothcore.org/wiki/install-with-docker)
