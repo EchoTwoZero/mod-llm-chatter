@@ -1,5 +1,25 @@
 # Changelog
 
+### 2026-10-03 - Optional Native Structured Output
+
+* **Global switch**: Add `LLMChatter.StructuredOutput.Enable`, default `0`,
+  for JSON generation across Anthropic, OpenAI, Google, OpenRouter and
+  Ollama, including analysis, memory and host screenshot vision.
+* **Strict responses**: Enabled calls request a native schema and reject
+  incomplete, refused or invalid output before existing parsers. Repairs
+  retain their schema; unsupported formats never silently fall back to text.
+  Farewell and identity prose remain explicit free-text calls.
+* **Diagnostics**: Report requested mode and resolved targets, categorized
+  failures and periodic repeat counts. Optional request logs include schema,
+  completion and validation details. Host vision diagnostics use its normal
+  logger, without image payloads or writes to the bridge's JSONL path.
+* **Upgrade**: Install updated `tools/requirements.txt` (adds `jsonschema`)
+  in bridge and host environments; enabled startup checks for the validator.
+  Restart the affected Python processes
+  to load the setting. No rebuild, migration or worldserver restart.
+  Enable only after checking every configured JSON endpoint's capability;
+  return the flag to `0` and restart those processes to restore legacy mode.
+
 ### 2026-10-03 - Screenshot Cycle Diagnostics
 
 * **Host agent logging**: Show each cycle's randomized wait and next

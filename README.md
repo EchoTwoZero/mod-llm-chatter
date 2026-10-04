@@ -172,6 +172,22 @@ provider or model change. The bridge chooses compatible token, temperature,
 and reasoning parameters automatically, then caches any explicit
 unsupported-parameter correction for the rest of that process.
 
+### Optional Structured Output
+
+`LLMChatter.StructuredOutput.Enable = 0` keeps the existing prompt/parser
+behavior. Set it to `1` to request native JSON Schema output for all JSON
+generation, including quick analysis, memory and screenshot vision. Enable
+it only when every configured JSON target supports the required format.
+Unsupported endpoints use `0`; the bridge never retries without the schema.
+Support depends on the serving endpoint, including local Ollama hosting Qwen
+or other models, rather than a hardcoded list of model names.
+
+Install the updated `tools/requirements.txt` in each Python environment,
+then restart the chatter bridge and host screenshot agent when used.
+No compilation or worldserver restart is needed. See the
+[structured-output guide](docs/mod-llm-chatter-documentation.md#native-structured-output)
+for provider formats, diagnostics and rollback.
+
 ### Ignoring Visible Protocol Chat
 
 If a server-specific addon or command sends machine-readable data through
