@@ -591,6 +591,13 @@ tone, traits or mood.
   `typing_style_note()`. A builder that uses both the header and the
   persona block passes `include_typing_style=False` to the block so the
   habit appears once. Roleplay speech and NPCs never get one.
+  `chatter_mode.apply_typing_style()` (with the text transform
+  `chatter_text.apply_typing_habits()`) also enforces the mechanical
+  part on finished text: in `insert_chat_message()` for every playerbot
+  channel except `msay`/`myell` and NPC rows, before pre-cached lines
+  and farewells are stored (C++ sends those directly), and in the
+  Party and General history writers for bot lines. It reads the mode
+  and language loaded by `configure_typing_style()` and is idempotent.
   `LLMChatter.Persona.TypingStyle.Enable` turns it off.
 - **Flavor**: `chatter_prompts.py` owns the gates. Creative twists use
   `LLMChatter.Persona.TwistChance` and are labelled as optional angles.

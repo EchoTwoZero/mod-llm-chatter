@@ -428,6 +428,202 @@ class TypingStylePromptTests(_TypingStyleCase):
         self.assertIn(typo, seen)
 
 
+def _name_with(style):
+    """A bot name whose stable typing style is ``style``."""
+    for index in range(10000):
+        name = f'Bot{index}'
+        if resolve_typing_style(name) == style:
+            return name
+    raise AssertionError(style)
+
+
+LOWER = 'all lowercase, no full stop at the end'
+NO_APOSTROPHES = (
+    'all lowercase, light on punctuation, skips apostrophes '
+    '(dont, im, thats)'
+)
+NO_STOP = 'capitalises the first word but leaves off the final full stop'
+TRAILS = 'tends to trail off with ... rather than end a sentence'
+ORDINARY = 'ordinary sentence case with normal punctuation'
+
+
+class _CaptureCursor:
+    def __init__(self):
+        self.params = None
+        self.lastrowid = 1
+
+    def execute(self, query, params=None):
+        if 'INSERT INTO llm_chatter_messages' in query:
+            self.params = params
+
+
+class _CaptureDB:
+    def __init__(self):
+        self.cursor_value = _CaptureCursor()
+
+    def cursor(self, *args, **kwargs):
+        return self.cursor_value
+
+    def commit(self):
+        pass
+
+
+def _inserted(name, message, channel='party', npc_spawn_id=None):
+    import chatter_db
+    db = _CaptureDB()
+    chatter_db.insert_chat_message(
+        db, 7, name, message, channel=channel,
+        npc_spawn_id=npc_spawn_id,
+    )
+    # (event_id, queue_id, sequence, bot_guid, bot_name, message, ...)
+    return db.cursor_value.params[5]
+
+
+class TypingHabitTextTests(unittest.TestCase):
+    def test_lowercase_keeps_names_links_and_shouting(self):
+        from chatter_text import apply_typing_habits
+        habits = {'lowercase', 'no_final_stop'}
+        link = (
+            '|cff1eff00|Hitem:2589:0:0:0:0:0:0:0'
+            '|h[Linen Cloth]|h|r'
+        )
+        cases = {
+            'I think we pull now. Ready?':
+                'i think we pull now. ready?',
+            "Okay, I'm in. Meet at Stormwind.":
+                "okay, i'm in. meet at Stormwind",
+            f'Nice, {link} for me.': f'nice, {link} for me',
+            'Grab {item:Linen Cloth} first.':
+                'grab {item:Linen Cloth} first',
+            'OMG that was close. Wow!': 'OMG that was close. wow!',
+            "Zul'Farrak again. VanCleef next.":
+                "Zul'Farrak again. VanCleef next",
+            'Okay...': 'okay...',
+        }
+        for given, expected in cases.items():
+            self.assertEqual(apply_typing_habits(given, habits), expected)
+
+    def test_apostrophes_trailing_dots_and_language(self):
+        from chatter_text import apply_typing_habits
+        self.assertEqual(
+            apply_typing_habits(
+                "Don't worry, {target} won't last. I've got it.",
+                {'lowercase', 'no_final_stop', 'no_apostrophes'},
+            ),
+            'dont worry, {target} wont last. ive got it',
+        )
+        self.assertEqual(
+            apply_typing_habits("We're close.", {'trail_off'}),
+            "We're close...",
+        )
+        self.assertEqual(
+            apply_typing_habits('Done?', {'trail_off'}), 'Done?',
+        )
+        # Pronoun and apostrophe rules are English-only.
+        self.assertEqual(
+            apply_typing_habits(
+                "Il faut l'attaquer. Allez.",
+                {'lowercase', 'no_final_stop', 'no_apostrophes'},
+                english=False,
+            ),
+            "il faut l'attaquer. allez",
+        )
+        self.assertEqual(apply_typing_habits('', {'lowercase'}), '')
+        self.assertEqual(apply_typing_habits('Hi.', set()), 'Hi.')
+
+
+class TypingHabitDeliveryTests(_TypingStyleCase):
+    def test_inserted_messages_carry_the_bots_habit(self):
+        self.assertEqual(
+            _inserted(_name_with(LOWER), 'I will tank. Pull when ready.'),
+            'i will tank. pull when ready',
+        )
+        self.assertEqual(
+            _inserted(_name_with(NO_STOP), 'Ready when you are.'),
+            'Ready when you are',
+        )
+        self.assertEqual(
+            _inserted(_name_with(NO_APOSTROPHES), "I'm out of mana."),
+            'im out of mana',
+        )
+        self.assertEqual(
+            _inserted(_name_with(TRAILS), 'Not sure about this.'),
+            'Not sure about this...',
+        )
+        self.assertEqual(
+            _inserted(_name_with(ORDINARY), 'Ready when you are.'),
+            'Ready when you are.',
+        )
+
+    def test_npc_roleplay_and_disabled_text_is_untouched(self):
+        name = _name_with(LOWER)
+        line = 'I will tank. Pull when ready.'
+        self.assertEqual(_inserted(name, line, channel='msay'), line)
+        self.assertEqual(_inserted(name, line, channel='myell'), line)
+        self.assertEqual(_inserted(name, line, npc_spawn_id=5), line)
+        configure_typing_style({'LLMChatter.ChatterMode': 'roleplay'})
+        self.assertEqual(_inserted(name, line), line)
+        configure_typing_style({KEY: 0})
+        self.assertEqual(_inserted(name, line), line)
+
+    def test_history_stores_bot_lines_as_delivered(self):
+        import chatter_general
+        import chatter_group_state
+        name = _name_with(LOWER)
+        rows = []
+
+        class _HistoryCursor:
+            def execute(self, query, params=None):
+                if 'INSERT INTO' in query:
+                    rows.append(params)
+
+            def fetchone(self):
+                return None
+
+            def fetchall(self):
+                return []
+
+            def close(self):
+                pass
+
+        class _HistoryDB:
+            def cursor(self, *args, **kwargs):
+                return _HistoryCursor()
+
+            def commit(self):
+                pass
+
+        chatter_group_state._store_chat(
+            _HistoryDB(), 3, 7, name, True, 'I can tank.')
+        chatter_group_state._store_chat(
+            _HistoryDB(), 3, 8, 'Karaez', False, 'I can tank.')
+        chatter_general._store_general_chat(
+            _HistoryDB(), 12, name, True, 'Selling ore.')
+        self.assertEqual(rows[0][-1], 'i can tank')
+        self.assertEqual(rows[1][-1], 'I can tank.')
+        self.assertEqual(rows[2][-1], 'selling ore')
+
+    def test_habits_are_idempotent(self):
+        for style in (LOWER, NO_APOSTROPHES, NO_STOP, TRAILS):
+            name = _name_with(style)
+            once = chatter_mode.apply_typing_style(
+                name, "I'm done. Let's go.")
+            self.assertEqual(
+                chatter_mode.apply_typing_style(name, once), once, style,
+            )
+
+    def test_directly_sent_lines_get_the_habit_too(self):
+        cache = (TOOLS_DIR / 'chatter_cache.py').read_text(
+            encoding='utf-8')
+        self.assertIn('message = apply_typing_style(bot_name, message)',
+                      cache.split('def refill_precache_pool', 1)[1])
+        farewell = (TOOLS_DIR / 'chatter_group_state.py').read_text(
+            encoding='utf-8').split('def _generate_farewell', 1)[1]
+        self.assertIn(
+            'farewell = apply_typing_style(bot_name, farewell)', farewell,
+        )
+
+
 class TypingStyleConfigTests(unittest.TestCase):
     def test_templates_document_the_default(self):
         for relative in (

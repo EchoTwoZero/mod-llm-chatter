@@ -20,6 +20,14 @@
 * **Typos**: The random "can include a typo" General guideline is
   dropped while typing styles are enabled; typos now belong to the bots
   whose habit includes them.
+* **Enforced habits**: Models tend to ignore a typing instruction and
+  write tidy sentences anyway, so the mechanical part of a habit is
+  applied to the finished text: lowercase sentence starts and "I", no
+  final full stop, no apostrophes in contractions, or trailing dots.
+  Names and places inside a sentence, ALL CAPS words, question marks,
+  links and placeholders are kept. It applies to delivered lines,
+  pre-cached instant reactions, farewells and bot lines stored in Party
+  and General history, and never to NPC or boss speech.
 * **Configuration**: Add bridge-side
   `LLMChatter.Persona.TypingStyle.Enable` (default `1`) to both
   configuration templates. Set it to `0` to restore the previous prompts,

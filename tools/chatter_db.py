@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple
 
 import mysql.connector
 
+from chatter_mode import apply_typing_style
 from chatter_party_gate import reserve_party_slot
 from chatter_constants import (
     CAPITAL_CITY_ZONES,
@@ -689,6 +690,10 @@ def insert_chat_message(
     # spoken line. Doing it at the single insert chokepoint
     # covers every producer without touching each call site.
     message, action = split_action_prefix(message)
+    # A playerbot's typing habit, applied to the finished text.
+    # NPC and boss lines (msay/myell) keep their own voice.
+    if channel not in ('msay', 'myell') and not npc_spawn_id:
+        message = apply_typing_style(bot_name, message)
 
     cursor = db.cursor()
     cursor.execute("""

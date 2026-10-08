@@ -7,6 +7,14 @@ in-world, including when they share a proximity scene with playerbots.
 import hashlib
 import logging
 
+from chatter_text import (
+    HABIT_LOWERCASE,
+    HABIT_NO_APOSTROPHES,
+    HABIT_NO_FINAL_STOP,
+    HABIT_TRAIL_OFF,
+    apply_typing_habits,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -67,6 +75,25 @@ _NORMAL_PLAYER_TYPING_STYLES = [
         'typing fast'),
 ]
 
+# The part of each style that is applied to finished text, because
+# models drift back to tidy sentences. Fragments, typos and dropped
+# capitals stay prompt-only: they cannot be imposed mechanically.
+_TYPING_STYLE_HABITS = {
+    'all lowercase, no full stop at the end': frozenset(
+        {HABIT_LOWERCASE, HABIT_NO_FINAL_STOP}),
+    'capitalises the first word but leaves off the final '
+    'full stop': frozenset({HABIT_NO_FINAL_STOP}),
+    'all lowercase, light on punctuation, skips apostrophes '
+    '(dont, im, thats)': frozenset(
+        {HABIT_LOWERCASE, HABIT_NO_FINAL_STOP, HABIT_NO_APOSTROPHES}),
+    'lowercase fragments rather than full sentences': frozenset(
+        {HABIT_LOWERCASE, HABIT_NO_FINAL_STOP}),
+    'tends to trail off with ... rather than end a sentence':
+        frozenset({HABIT_TRAIL_OFF}),
+    'lowercase and quick, now and then leaves a small typo '
+    'uncorrected': frozenset({HABIT_LOWERCASE, HABIT_NO_FINAL_STOP}),
+}
+
 TYPING_STYLE_RULE = (
     "Where a speaker's typing style is given, it only describes how "
     "that person types. It applies to every message they write and "
@@ -77,15 +104,19 @@ TYPING_STYLE_RULE = (
     "as given."
 )
 
-# Loaded once at bridge startup by configure_typing_style().
+# Loaded once at bridge startup by configure_typing_style(). The mode
+# and language let delivery-side code apply habits without a config.
 _typing_style_enabled = True
+_typing_mode = 'normal'
+_typing_english = True
 
 
 def configure_typing_style(config) -> None:
-    """Load LLMChatter.Persona.TypingStyle.Enable from the config."""
-    global _typing_style_enabled
+    """Load the typing-style switch, chatter mode and language."""
+    global _typing_style_enabled, _typing_mode, _typing_english
+    config = config or {}
     try:
-        _typing_style_enabled = int((config or {}).get(
+        _typing_style_enabled = int(config.get(
             'LLMChatter.Persona.TypingStyle.Enable', 1
         )) != 0
     except (TypeError, ValueError, AttributeError):
@@ -93,6 +124,13 @@ def configure_typing_style(config) -> None:
             "Failed to parse LLMChatter.Persona.TypingStyle.Enable"
         )
         _typing_style_enabled = True
+    _typing_mode = normalize_chatter_mode(
+        config.get('LLMChatter.ChatterMode', 'normal')
+    )
+    language = str(
+        config.get('LLMChatter.Language', 'GB') or 'GB'
+    ).strip().upper()
+    _typing_english = language in ('GB', 'US', 'EN')
 
 
 def typing_style_enabled() -> bool:
@@ -153,6 +191,10 @@ def resolve_typing_style(name: str, mode: str = 'normal') -> str:
     """
     if is_roleplay(mode) or not _typing_style_enabled:
         return ''
+    return _pick_typing_style(name)
+
+
+def _pick_typing_style(name: str) -> str:
     seed = str(name or 'playerbot').strip().casefold().encode('utf-8')
     digest = hashlib.sha256(seed).digest()
     roll = int.from_bytes(digest[8:12], 'big') % sum(
@@ -163,6 +205,21 @@ def resolve_typing_style(name: str, mode: str = 'normal') -> str:
             return style
         roll -= weight
     return ''
+
+
+def apply_typing_style(name: str, message: str) -> str:
+    """Apply a playerbot's mechanical typing habits to its message.
+
+    Uses the mode and language loaded by configure_typing_style(), so
+    message-insertion code needs no config. Roleplay mode, a disabled
+    switch and ordinary styles return the message unchanged. Never
+    call this for NPC speech.
+    """
+    style = resolve_typing_style(name, _typing_mode)
+    habits = _TYPING_STYLE_HABITS.get(style)
+    if not habits:
+        return message
+    return apply_typing_habits(message, habits, english=_typing_english)
 
 
 def typing_style_note(

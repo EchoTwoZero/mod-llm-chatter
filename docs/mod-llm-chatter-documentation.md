@@ -855,8 +855,17 @@ Nothing random overrides its identity.
   Ordinary typing is the most common single habit. The random "can
   include a typo" General guideline is dropped while this is on, so
   typos belong to the bots that make them. Roleplay speech and NPCs are
-  unaffected. Whether a model follows a habit closely is prompt-level
-  behavior and should be judged with the configured live model.
+  unaffected. Models drift back to tidy sentences, so the mechanical
+  part of a habit is also applied to the finished text: lowercase
+  sentence starts and "I", no final full stop, no apostrophes in
+  lowercase contractions, or a trailing "...". Capitalised words inside
+  a sentence (names, places), ALL CAPS words, question and exclamation
+  marks, links and placeholders are kept; apostrophe and pronoun rules
+  apply to English only. This runs where the line is stored for
+  delivery (`insert_chat_message()`), for pre-cached instant reactions
+  and farewells, and for bot lines in Party and General history, never
+  for NPC or boss speech. Fragments, typos and dropped capitals stay
+  prompt-only.
 - **Mood**: comes only from real events (kills, loot, deaths, wipes,
   level-ups...) and is shared across channels, so a bot that just wiped
   sounds gloomy in guild chat too. Each new event nudges the mood back
