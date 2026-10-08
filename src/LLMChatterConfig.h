@@ -242,6 +242,12 @@ public:
     uint32 _duelEndChance;        // 0-100
     uint32 _duelCooldown;         // seconds per group
 
+    // Group chatter - reactions to boss lines
+    bool _bossLineChatterEnable;
+    uint32 _bossLineChance;       // 0-100 per heard line
+    uint32 _bossLineYellChance;   // 0-100 shout back
+    uint32 _bossLineCooldown;     // seconds per group
+
     // Pre-cached instant reactions
     bool _preCacheEnable;
     bool _preCacheCombatEnable;

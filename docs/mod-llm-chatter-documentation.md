@@ -1305,6 +1305,54 @@ identity of duellists it can see, apart from its own party members. Prompts and 
 Settings: `LLMChatter.GroupChatter.Duel.Enable`, `Duel.StartChance`,
 `Duel.EndChance`, and `Duel.Cooldown`.
 
+### Boss lines
+
+Group bots can react to what a boss says or yells, either commenting in
+party chat or shouting back at the boss with `/yell`. AzerothCore has no
+script hook for creature speech, so `LLMChatterBossLine.cpp` registers a
+`ServerScript::CanPacketSend` observer. It watches `SMSG_MESSAGECHAT`
+packets sent to real players' clients and reads creature `/say` and
+`/yell` lines with the dependency-free parser in
+`LLMChatterBossLineParse.h`. Scripted encounter lines and the module's
+own boss dialogue are both covered, and a group only reacts to a line
+its real player actually received.
+
+The hook runs on whichever thread sends the packet, so it only parses
+and records the line in a small mutex-guarded queue (capped at 64 lines)
+and always lets the packet through. `ProcessCapturedBossLines()` runs on
+the world thread from `LLMChatterWorldScript::OnUpdate`. It resolves the
+player and creature, requires the shared boss classifier
+(`IsLLMChatterBoss()`), skips internal creatures, battlegrounds and
+arenas, and requires a group with a real player and bots. Copies of the
+same line reaching several real players in one group count once within
+ten seconds. The line then passes `BossLine.Chance` and the per-group
+`BossLine.Cooldown`. The reactor is a living group bot on the same map;
+a `/say` also needs the bot within 40 yards of the player. C++ rolls
+`BossLine.YellChance` to choose between a party comment and a shouted
+reply, then queues `bot_group_boss_line` (high priority, 20-second
+expiry) with the boss name and entry, the line, whether it was said or
+yelled, the boss's combat state, health and whether it is alive, and
+`reply_channel`.
+
+`tools/chatter_boss_reaction.py` builds the prompt. The reply answers
+what the boss actually said, quoted as data rather than instructions:
+before the pull, mid-fight with the boss's health, or as a parting word
+when the line came as the boss fell. A shouted reply addresses the boss,
+stays under 80 characters, carries no emote and is delivered as the
+bot's `/yell` with `owner_subsystem='group'`; a party comment uses the
+normal party-chat length hint and pacing gate. Roleplay bots answer in
+character; normal-mode bots trash-talk the way players do, which the
+normal senses rule allows because voice lines are game audio.
+
+| Key | Default | Purpose |
+|---|---|---|
+| `LLMChatter.GroupChatter.BossLine.Enable` | 1 | Server: react to boss lines |
+| `LLMChatter.GroupChatter.BossLine.Chance` | 60 | Percent of heard lines that get a reaction |
+| `LLMChatter.GroupChatter.BossLine.YellChance` | 40 | Percent of reactions shouted back at the boss |
+| `LLMChatter.GroupChatter.BossLine.Cooldown` | 30 | Seconds between reactions per group |
+
+These are server-side settings; apply changes with `.reload config`.
+
 ---
 
 ## 10. World Events

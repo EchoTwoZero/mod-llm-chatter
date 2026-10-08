@@ -1,5 +1,30 @@
 # Changelog
 
+### 2026-10-08 - Boss Line Reactions
+
+* **Feature**: Group bots can react to what a boss says or yells, either
+  commenting in party chat or shouting back at the boss with `/yell`.
+  Scripted encounter lines and the module's own boss dialogue are both
+  covered. Replies answer the actual line: before the pull, mid-fight,
+  or as the boss falls.
+* **Capture**: AzerothCore has no creature-speech hook, so
+  `LLMChatterBossLine.cpp` observes the `SMSG_MESSAGECHAT` packets sent
+  to real players and reads creature `/say` and `/yell` lines. A group
+  only reacts to a line its real player received. The hook only parses
+  and records; all lookups and queueing happen on the world thread, and
+  every packet is sent unchanged.
+* **Pacing**: The shared boss classifier, a per-line chance, a per-group
+  cooldown and a 20-second expiry keep reactions to talkative encounters
+  occasional and timely. Battlegrounds and arenas are excluded.
+* **Configuration**: Add `LLMChatter.GroupChatter.BossLine.Enable`,
+  `Chance`, `YellChance` and `Cooldown` (defaults `1`, `60`, `40`, `30`;
+  the quieter preset uses `30` and `60` for chance and cooldown).
+* **Upgrade**: Rebuild the module, apply
+  `data/sql/characters/updates/20261008_boss_line_reactions.sql` on
+  existing installs (it adds the `bot_group_boss_line` event type),
+  update your config from the template, and restart worldserver and the
+  chatter bridge.
+
 ### 2026-10-08 - Player Senses in Normal Mode
 
 * **Cause**: Several party prompts passed roleplay lore prose to

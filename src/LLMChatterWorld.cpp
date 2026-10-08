@@ -4,6 +4,7 @@
 
 #include "LLMChatterAmbient.h"
 #include "LLMChatterBossDialogue.h"
+#include "LLMChatterBossLine.h"
 #include "LLMChatterConfig.h"
 #include "LLMChatterScreenshot.h"
 #include "LLMChatterDelivery.h"
@@ -356,6 +357,10 @@ public:
 
         if (!sLLMChatterConfig->IsEnabled())
             return;
+
+        // Boss lines are moments: queue reactions promptly.
+        // Cheap when nothing was captured.
+        ProcessCapturedBossLines();
 
         uint32 now = getMSTime();
 

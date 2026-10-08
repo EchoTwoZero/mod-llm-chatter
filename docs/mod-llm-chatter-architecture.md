@@ -1040,6 +1040,8 @@ Session 69 added two scheduling controls around that model:
 | `src/LLMChatterGroupQuest.cpp` | 530 | Quest accept batching: `FlushQuestAcceptBatches()`, `LLMChatterCreatureScript` (AllCreatureScript: `CanCreatureQuestAccept` with debounce/immediate paths) |
 | `src/LLMChatterGroupPvP.cpp` | ~630 | Overworld PvP: opposing-faction enemy resolution (players and their pets), the identity visibility gate, PvP reactor selection, enemy JSON fields, per-group and per-enemy PvP cooldowns, PvP pull, player-kill, and pet-kill entry points |
 | `src/LLMChatterDuel.cpp` | ~300 | Duel start/end `PlayerScript`, duel reactor selection, duel cooldowns, and `bot_group_duel_start` / `bot_group_duel_end` queueing |
+| `src/LLMChatterBossLine.cpp/.h` | ~320 | `ServerScript::CanPacketSend` observer for creature say/yell packets sent to real players, world-thread processing, boss-line dedup, chance and group cooldown, and `bot_group_boss_line` queueing |
+| `src/LLMChatterBossLineParse.h` | ~180 | Dependency-free `SMSG_MESSAGECHAT` monster-chat reader, unit-tested by `tools/tests/cpp/test_boss_line_parse.cpp` |
 | `src/LLMChatterGroup.h` | 18 | World-to-group cross-call surface plus group registration |
 | `src/LLMChatterPlayer.cpp` | 1105 | Player General-channel hooks, General cooldowns, subzone cooldowns, `EnsureBotInGeneralChannel()`, player registration |
 | `src/LLMChatterRaid.cpp` | 767 | Raid boss hooks (pull/kill/wipe), boss lookup table (80+ entries across Classic/TBC/WotLK), `IsDatabaseBound() override`, raid registration |
@@ -1106,6 +1108,7 @@ This asymmetry is known and acceptable in the shipped source state.
 | `tools/chatter_group_prompts.py` | Group prompt builders, nearby-object prompts, pre-cache prompt builders, `build_player_msg_conversation_prompt()`. All major party chatter builders accept `map_id=0` and inject `get_dungeon_flavor(map_id)` as location context when inside a dungeon instance, replacing zone/subzone lore. Excluded: OOM, low-health, level-up. |
 | `tools/chatter_group_state.py` | Group mood/traits/history state; owns the event mood store, including the cross-channel `get_bot_mood_label_by_guid()` lookup |
 | `tools/chatter_duel.py` | Duel start/end handlers and prompt builders for `bot_group_duel_start` and `bot_group_duel_end` |
+| `tools/chatter_boss_reaction.py` | Handler and prompt for `bot_group_boss_line`: a party comment on, or a shouted reply to, what a boss just said |
 | `tools/chatter_group_general_reaction.py` | General-to-party relay: queues and handles `bot_group_general_reaction` events when grouped bots react in party chat to bot-authored General lines |
 
 ### Shared and support layers
@@ -1541,6 +1544,13 @@ with `LLMChatterBG.cpp`.
 `bot_group_duel_start` and `bot_group_duel_end` for each distinct group
 with a real player that contains a duellist. The reactor is a bot
 duellist or a group bot that can see the duel.
+
+`LLMChatterBossLine.cpp` owns reactions to boss speech. Its
+`CanPacketSend` observer runs on packet-sending threads and must stay
+observation-only: parse with `LLMChatterBossLineParse.h`, record under
+the capture mutex, and return true. No player, creature or group lookup
+and no event queueing happens there. `ProcessCapturedBossLines()` does
+that work on the world thread.
 
 ### Player ownership
 

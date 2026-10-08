@@ -1996,6 +1996,45 @@ LLMChatter.GroupChatter.Duel.EndChance = 100
 LLMChatter.GroupChatter.Duel.Cooldown = 60
 
 #
+#   LLMChatter.GroupChatter.BossLine.Enable [SERVER]
+#       Let group bots react to what a boss says or yells: scripted
+#       encounter lines and the module's own boss dialogue alike. A
+#       line counts only when the real player's client received it,
+#       so a bot never answers something nobody in the group heard.
+#       A bot in the same instance reacts to a yell; a /say needs the
+#       bot near the player. The reaction either comments in party
+#       chat or shouts back at the boss with /yell (see YellChance).
+#       Battlegrounds and arenas are excluded.
+#       Default: 1
+#
+LLMChatter.GroupChatter.BossLine.Enable = 1
+
+#
+#   LLMChatter.GroupChatter.BossLine.Chance [SERVER]
+#       Percent chance (0-100) that a heard boss line gets a reaction.
+#       The same line reaching several players in one group is one
+#       chance.
+#       Default: 60
+#
+LLMChatter.GroupChatter.BossLine.Chance = 60
+
+#
+#   LLMChatter.GroupChatter.BossLine.YellChance [SERVER]
+#       Percent chance (0-100) that a reaction is shouted back at the
+#       boss with /yell instead of said to the party.
+#       Default: 40
+#
+LLMChatter.GroupChatter.BossLine.YellChance = 40
+
+#
+#   LLMChatter.GroupChatter.BossLine.Cooldown [SERVER]
+#       Minimum seconds between boss-line reactions for the same
+#       group, so a talkative encounter does not drown party chat.
+#       Default: 30
+#
+LLMChatter.GroupChatter.BossLine.Cooldown = 30
+
+#
 #   LLMChatter.GroupChatter.BotQuestionEnable
 #       Enable bot-initiated questions to player.
 #       Default: 1

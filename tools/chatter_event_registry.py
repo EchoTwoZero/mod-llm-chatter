@@ -295,6 +295,25 @@ EVENT_REGISTRY: Dict[str, EventSpec] = {
         },
     ),
 
+    'bot_group_boss_line': EventSpec(
+        handler_module='chatter_boss_reaction',
+        handler_func='process_boss_line_event',
+        producer='LLMChatterBossLine.cpp',
+        priority='high',
+        description='Bot reacts to what a boss said or yelled',
+        payload_fields={
+            'boss_name': (str, True),
+            'boss_entry': (int, True),
+            'boss_line': (str, True),
+            'line_type': (str, True),
+            'boss_alive': (bool, False),
+            'boss_in_combat': (bool, False),
+            'boss_health_pct': (int, False),
+            'listener_name': (str, False),
+            'reply_channel': (str, True),
+        },
+    ),
+
     'bot_group_duel_end': EventSpec(
         handler_module='chatter_duel',
         handler_func='process_duel_end_event',

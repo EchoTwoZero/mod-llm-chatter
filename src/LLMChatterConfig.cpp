@@ -805,6 +805,19 @@ void LLMChatterConfig::LoadConfig()
         GetChatterOption<uint32>(
             "LLMChatter.GroupChatter.Duel.Cooldown", 60);
 
+    // Group chatter - reactions to boss lines
+    _bossLineChatterEnable = GetChatterOption<bool>(
+        "LLMChatter.GroupChatter.BossLine.Enable", true);
+    _bossLineChance = std::min<uint32>(100,
+        GetChatterOption<uint32>(
+            "LLMChatter.GroupChatter.BossLine.Chance", 60));
+    _bossLineYellChance = std::min<uint32>(100,
+        GetChatterOption<uint32>(
+            "LLMChatter.GroupChatter.BossLine.YellChance", 40));
+    _bossLineCooldown =
+        GetChatterOption<uint32>(
+            "LLMChatter.GroupChatter.BossLine.Cooldown", 30);
+
     // Pre-cached instant reactions
     _preCacheEnable = GetChatterOption<bool>(
         "LLMChatter.GroupChatter.PreCacheEnable",

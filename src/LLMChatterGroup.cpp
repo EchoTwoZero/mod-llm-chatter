@@ -26,6 +26,7 @@
 
 #include "LLMChatterConfig.h"
 #include "LLMChatterBG.h"
+#include "LLMChatterBossLine.h"
 #include "LLMChatterGroup.h"
 #include "LLMChatterGroupInternal.h"
 #include "LLMChatterShared.h"
@@ -1527,6 +1528,7 @@ void AddLLMChatterGroupScripts()
     new LLMChatterGroupPlayerScript();
     AddLLMChatterGroupQuestScripts();
     AddLLMChatterDuelScripts();
+    AddLLMChatterBossLineScripts();
 }
 
 

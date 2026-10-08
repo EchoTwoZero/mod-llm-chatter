@@ -133,8 +133,13 @@ def run_group_handler(
     inject_mood=True,
     bg_fallback_prompt=None,
     pre_parsed_extra=None,
+    owner_subsystem=None,
 ):
     """Shared pipeline for group event handlers.
+
+    owner_subsystem: passed to delivery for channels that
+    would not otherwise be classified as group chatter
+    (a group bot's /yell).
 
     Steps:
     1. Parse extra_data
@@ -371,6 +376,7 @@ def run_group_handler(
                 event_type_label,
             ),
             delivery_reason=event_type_label,
+            owner_subsystem=owner_subsystem,
         )
 
         if not result['ok']:

@@ -46,6 +46,8 @@ Built from the ground up for **fantasy roleplay immersion**. Every system, perso
   and holidays.
 * **Interactive parties**: Companions banter with one another, ask the player
   questions, and react to combat, loot, quests, achievements, and travel.
+  When a boss taunts the group, a companion may comment on it in party chat
+  or yell right back.
 * **Open-world PvP and duels**: Companions size up enemies of the opposing
   faction by name, race, class, and level, react to ambushes, kills, deaths,
   and ganks in character, and cheer or tease during duels. Nearby bots
@@ -724,6 +726,9 @@ docker exec -i ac-database mysql -uroot -ppassword acore_characters < \
 docker exec -i ac-database mysql -uroot -ppassword acore_characters < \
   modules/mod-llm-chatter/data/sql/characters/updates/20260926_duel_events.sql
 
+docker exec -i ac-database mysql -uroot -ppassword acore_characters < \
+  modules/mod-llm-chatter/data/sql/characters/updates/20261008_boss_line_reactions.sql
+
 # Non-Docker
 mysql -uroot -ppassword acore_characters < \
   data/sql/characters/updates/20260320_bot_memory_system.sql
@@ -787,6 +792,9 @@ mysql -uroot -ppassword acore_characters < \
 
 mysql -uroot -ppassword acore_characters < \
   data/sql/characters/updates/20260926_duel_events.sql
+
+mysql -uroot -ppassword acore_characters < \
+  data/sql/characters/updates/20261008_boss_line_reactions.sql
 ```
 
 Migrations are idempotent — safe to run on an already
