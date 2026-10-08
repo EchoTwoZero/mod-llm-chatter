@@ -1843,12 +1843,15 @@ def build_event_conversation_prompt(
             "to mention it explicitly."
         )
 
-    weather_for_context = (
-        current_weather
-        if 'weather' not in event_context.lower()
-        else None
-    )
-    append_environmental_context(parts, weather_for_context)
+    # Time, season and weather narration is roleplay-only,
+    # as in the event statement and ambient builders.
+    if is_rp:
+        weather_for_context = (
+            current_weather
+            if 'weather' not in event_context.lower()
+            else None
+        )
+        append_environmental_context(parts, weather_for_context)
 
     # Precompute shared race context once per unique race.
     # Pass race_count so lore uses cumulative probability

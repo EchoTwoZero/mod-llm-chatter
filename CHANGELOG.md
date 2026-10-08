@@ -1,5 +1,33 @@
 # Changelog
 
+### 2026-10-08 - Sight-Only Normal Mode
+
+* **Cause**: Several party prompts passed roleplay lore prose to
+  normal-mode bots. Zone and subzone arrivals received the zone
+  "atmosphere" and subzone descriptions, party replies to the player
+  received the subzone description, and dungeon entries received the
+  dungeon atmosphere. Those descriptions are dense with sounds, scents,
+  chill and breezes, so bots that were meant to speak as players
+  commented on feeling cold or smelling things. World-event
+  conversations also added time, season and weather narration, and a few
+  normal-mode topics and spices asked about game audio or hunger.
+* **Sight only**: The normal voice contract now states that a playerbot
+  only sees the game world on screen: it never claims to hear, smell,
+  taste, touch or feel anything in it, treats sensory wording in other
+  prompt data as background lore, and does not narrate its surroundings
+  unless the moment is about the scenery.
+* **Lore**: Zone, subzone and dungeon lore prose and environment
+  narration reach roleplay prompts only. Normal prompts receive the plain
+  subzone name, and dungeon entries keep their known boss list.
+* **Topics**: Remove game-audio, smell and body-sensation prompts from
+  the normal-mode ambient topics, message categories, personality spices
+  and proximity player topics. Scenery, weather and light topics move to
+  roleplay only, and the normal scenery categories shrink to four visual
+  ones so bots call out their surroundings less often.
+* **Roleplay**: Roleplay prompts, lore and topic pools are unchanged.
+* **Upgrade**: Python only. Restart the chatter bridge. No C++ build,
+  configuration change or database migration.
+
 ### 2026-10-06 - LF Line Endings
 
 * **Repository**: Add `.gitattributes` forcing LF line endings, so

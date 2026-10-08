@@ -793,9 +793,20 @@ players, and avoids making toxicity or forced gamer slang the default.
 
 Normal prompts treat race, class, level, health, travel, weather, and
 locations as character or game state rather than sensations physically
-experienced by the speaker. Character backstories and race/class
-worldview material are prompt inputs only in roleplay mode. Memory
-callbacks in normal mode are framed as remembered gameplay events.
+experienced by the speaker. A normal-mode playerbot perceives the game
+world only by sight, as what is on screen: the shared voice contract
+(`NORMAL_MODE_SENSES_RULE` in `chatter_mode.py`) forbids claiming to hear,
+smell, taste, touch or feel anything in it, tells the model to treat any
+sensory wording in other prompt data as background lore, and keeps
+unprompted scenery narration out of ordinary chat. Zone, subzone and
+dungeon lore prose, whose descriptions are full of sounds, scents and
+temperature, is therefore a roleplay-only prompt input, as are the time,
+season and weather narration lines; normal prompts receive the plain
+zone, subzone or dungeon name instead. Normal-mode topic, category and
+spice pools contain no game-audio, smell or body-sensation prompts, and
+scenery and weather topics are roleplay-only. Character backstories and
+race/class worldview material are prompt inputs only in roleplay mode.
+Memory callbacks in normal mode are framed as remembered gameplay events.
 
 Actual NPCs are the exception: they always remain lore-friendly,
 in-world speakers. Proximity chatter can contain NPCs and playerbots in
