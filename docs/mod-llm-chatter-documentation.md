@@ -271,7 +271,8 @@ There are two separate delays that are easy to confuse:
 Most delivery delays use `calculate_dynamic_delay()` in
 `chatter_shared.py`:
 
-- `responsive=True` for player-directed replies
+- `responsive=True` for player-directed replies, which scale with the
+  reply's length and credit time already spent generating (see 13c)
 - ambient/group conversation paths can also include reading time from
   `prev_message_length`
 
@@ -2562,16 +2563,42 @@ All three keys are `[BRIDGE]` scope (Python-only; no server restart needed).
 
 Player-directed replies use faster timing than ambient chatter. The
 `calculate_dynamic_delay()` function in `chatter_shared.py` accepts a
-`responsive=True` parameter that:
+`responsive=True` parameter that skips the distraction and reading
+simulation and returns a bounded delay that grows with the reply's own
+length, so a short acknowledgement lands sooner than a long answer:
 
-- skips distraction simulation
-- uses shorter reaction and typing windows
-- enforces a 2-second floor (vs 4 seconds for ambient)
-- skips reading time for multi-bot conversation follow-up messages
+- `MinSeconds + characters / CharsPerSecond` is how long the reply takes
+  to compose, bounded by `MaxSeconds`
+- `JitterPercent` variation is sampled inside those bounds, so the floor
+  and the ceiling still vary
+- `prev_message_length` is ignored in this mode
 
-All player message paths (single reply, conversation, multi-addressed)
-use responsive delays. Ambient chatter, idle banter, and world events
-continue to use standard timing.
+For the first reply to a player message, the caller passes
+`elapsed_seconds=get_event_age_seconds(db, event_id)` (`chatter_db.py`):
+the time since the event row was queued, measured on the database
+clock. Queueing and LLM generation therefore count towards the composing
+time instead of being added on top, and a slow provider adds only
+`MinSeconds`. Gaps between later lines of a multi-bot reply use the same
+formula without that credit.
+
+Party single replies, the optional second-bot reply, multi-bot
+player-message conversations and the General-to-party relay use this
+timing. The second-bot reply waits out whatever remains of the first
+reply's delay before adding its own gap, rather than relying on a fixed
+offset. The first General reply also uses it but keeps its existing
+5-second ceiling. Party lines still pass through the party chat pacing
+gate. Guild replies and proximity scenes keep their own pacing. Ambient
+chatter, idle banter, and world events continue to use standard timing.
+
+| Key | Default | Purpose |
+|---|---|---|
+| `LLMChatter.PlayerChat.DynamicPacing.Enable` | 1 | Bridge: length-aware reply delay; `0` restores the fixed 4-8 second delay |
+| `LLMChatter.PlayerChat.DynamicPacing.MinSeconds` | 1 | Shortest delay, and the base composing time |
+| `LLMChatter.PlayerChat.DynamicPacing.MaxSeconds` | 8 | Longest delay |
+| `LLMChatter.PlayerChat.DynamicPacing.CharsPerSecond` | 10 | Length contribution rate |
+| `LLMChatter.PlayerChat.DynamicPacing.JitterPercent` | 20 | Random variation within the bounds |
+
+All are bridge-side settings and need a bridge restart.
 
 ---
 
@@ -2582,7 +2609,7 @@ delivery code:
 
 | Helper | Purpose |
 |--------|---------|
-| `calculate_dynamic_delay(responsive=False)` | Delivery timing — skips distraction sim and uses a 2s floor when `responsive=True` |
+| `calculate_dynamic_delay(responsive=False)` | Delivery timing — bounded, length-aware and latency-aware when `responsive=True` (see 13c) |
 | `find_addressed_bot(...)` | Explicit/implicit addressee, multi-addressed intent, brief-casual scale, and optional-reply classification via LLM context analysis |
 | `should_reply_to_optional_casual(...)` | One bounded RNG roll for semantically optional brief turns; non-optional turns always pass |
 | `bound_brief_casual_response(...)` | Deterministically enforce the 8-word/50-character brief contract while preserving a usable original response and emote |

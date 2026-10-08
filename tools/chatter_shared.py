@@ -9,6 +9,7 @@ No circular dependencies.
 import json
 import locale
 import logging
+import math
 import os
 import random
 import re
@@ -2259,19 +2260,89 @@ def build_conversation_json_repair_prompt(
 # =============================================================================
 # DYNAMIC DELAYS
 # =============================================================================
+_RESPONSIVE_PACING_PREFIX = 'LLMChatter.PlayerChat.DynamicPacing.'
+
+
+def _responsive_pacing_number(config, key, default):
+    try:
+        value = float(config.get(
+            _RESPONSIVE_PACING_PREFIX + key, default
+        ))
+        return value if math.isfinite(value) else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _responsive_delay(
+    message_length, config, elapsed_seconds=0.0,
+) -> float:
+    """Bounded, length-aware delay for a reply a player
+    is waiting on.
+
+    MinSeconds + characters / CharsPerSecond is how long
+    the reply would take to compose. elapsed_seconds, the
+    time already spent since the player spoke (queueing
+    and generation), counts towards it, so slow providers
+    are not penalised twice. Sample inside the bounds
+    rather than clipping jitter afterwards, preserving
+    variation at both limits.
+    """
+    config = config or {}
+    if not _responsive_pacing_number(config, 'Enable', 1):
+        return random.uniform(4.0, 8.0)
+
+    minimum = max(0.0, _responsive_pacing_number(
+        config, 'MinSeconds', 1,
+    ))
+    maximum = max(minimum, _responsive_pacing_number(
+        config, 'MaxSeconds', 8,
+    ))
+    rate = _responsive_pacing_number(
+        config, 'CharsPerSecond', 10,
+    )
+    if rate <= 0:
+        rate = 10
+    jitter = max(0.0, min(100.0, _responsive_pacing_number(
+        config, 'JitterPercent', 20,
+    ))) / 100.0
+    try:
+        length = max(0, int(message_length or 0))
+    except (TypeError, ValueError):
+        length = 0
+    try:
+        elapsed = float(elapsed_seconds or 0.0)
+    except (TypeError, ValueError):
+        elapsed = 0.0
+    if not math.isfinite(elapsed) or elapsed < 0:
+        elapsed = 0.0
+
+    base = min(maximum, max(
+        minimum, minimum + length / rate - elapsed,
+    ))
+    return random.uniform(
+        max(minimum, base * (1.0 - jitter)),
+        min(maximum, base * (1.0 + jitter)),
+    )
+
+
 def calculate_dynamic_delay(
     message_length: int,
     config: dict,
     prev_message_length: int = 0,
     responsive: bool = False,
+    elapsed_seconds: float = 0.0,
 ) -> float:
     """Calculate a realistic delay based on message
     length.
 
     When responsive=True (player message replies),
-    uses faster timing: no distraction, shorter
-    reaction/typing, lower floor. Bots respond
-    promptly when spoken to directly.
+    uses faster timing: no distraction or reading
+    simulation, and a bounded delay that grows with the
+    reply's own length. Pass elapsed_seconds (time since
+    the player spoke) for the first reply so generation
+    latency is not added on top; leave it at 0 for the
+    gap between follow-up lines. prev_message_length is
+    ignored in this mode.
     """
     min_delay = (
         int(config.get('LLMChatter.MessageDelayMin', 1000))
@@ -2283,10 +2354,12 @@ def calculate_dynamic_delay(
     )
 
     if responsive:
-        # Player is waiting — fast reply.  The LLM
-        # already took several seconds ("thinking"),
-        # so keep the typing simulation short.
-        return random.uniform(4.0, 8.0)
+        # Player is waiting. A short acknowledgement
+        # lands quickly; a longer answer takes longer
+        # to "type", within the configured bounds.
+        return _responsive_delay(
+            message_length, config, elapsed_seconds,
+        )
 
     # Ambient/idle — full simulation
     reading_time = (

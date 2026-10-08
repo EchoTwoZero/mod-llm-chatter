@@ -78,6 +78,7 @@ from chatter_links import resolve_and_format_links
 from chatter_db import (
     fail_event,
     get_character_info_by_name,
+    get_event_age_seconds,
     mark_event,
 )
 from chatter_group_general_reaction import (
@@ -1068,6 +1069,9 @@ def process_general_player_msg_event(
         delay1 = min(
             calculate_dynamic_delay(
                 len(msg1), config, responsive=True,
+                elapsed_seconds=get_event_age_seconds(
+                    db, event_id
+                ),
             ),
             5.0,
         )

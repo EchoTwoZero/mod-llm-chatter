@@ -864,7 +864,11 @@ There are two separate timing stages:
 
 `calculate_dynamic_delay()` in `chatter_shared.py` controls the second
 stage for most Python-generated messages. Player-directed replies use
-`responsive=True`; ambient/group conversations can also include reading
+`responsive=True`: a bounded delay that grows with the reply's length
+(`PlayerChat.DynamicPacing.*`). The first reply passes the event's age
+from `get_event_age_seconds()` in `chatter_db.py` as `elapsed_seconds`,
+so queueing and generation latency count towards the delay rather than
+adding to it. Ambient/group conversations can also include reading
 time from the previous message length.
 Player-triggered proximity say, active-scene reply, conversation, and emote
 events use the high priority tier (0-2 second reaction delay by default) and
@@ -1951,8 +1955,8 @@ source:
    of 2-3 bot replies (Architecture B — single LLM call).
 4. `execute_player_msg_conversation()` in `chatter_group_handlers.py`
    dispatches the call and inserts the resulting messages.
-5. Delays use `calculate_dynamic_delay(responsive=True)` for faster
-   player-directed timing (2s floor vs 4s ambient).
+5. Delays use `calculate_dynamic_delay(responsive=True)` for faster,
+   length-aware player-directed timing (`PlayerChat.DynamicPacing.*`).
 
 ## Where To Edit What
 

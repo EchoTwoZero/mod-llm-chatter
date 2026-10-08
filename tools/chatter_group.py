@@ -85,6 +85,7 @@ from chatter_shared import (
 )
 from chatter_db import (
     get_character_info_by_name,
+    get_event_age_seconds,
     get_group_location,
     is_player_online,
 )
@@ -2180,12 +2181,17 @@ def process_group_player_msg_event(
             return False
         if message:
             message = shorten_chat_message(message)
+        # The time already spent queueing and generating
+        # counts towards the reply's composing time.
         reply_delay = calculate_dynamic_delay(
             len(message), config,
             prev_message_length=len(
                 player_message
             ),
             responsive=True,
+            elapsed_seconds=get_event_age_seconds(
+                db, event_id
+            ),
         )
         insert_chat_message(
             db, bot_guid, bot_name, message,
@@ -2197,6 +2203,7 @@ def process_group_player_msg_event(
             delivery_policy='responsive',
             delivery_reason='bot_group_player_msg',
         )
+        first_reply_due = time.monotonic() + reply_delay
 
         _store_chat(
             db, group_id, bot_guid,
@@ -2225,6 +2232,7 @@ def process_group_player_msg_event(
                         link_context=link_context,
                         items_info=items_info,
                         bg_context=extra_data,
+                        first_reply_due=first_reply_due,
                     )
                 except Exception as e2:
                     logger.error(
@@ -2390,11 +2398,13 @@ def _try_second_bot_response(
     first_bot_guid, player_name,
     player_message, mode, event_id,
     link_context="", items_info=None,
-    bg_context=None,
+    bg_context=None, first_reply_due=None,
 ):
     """Maybe generate a second bot response to a
     player message, for more natural group feel.
-    Uses a different bot with a 5s stagger.
+    Uses a different bot, scheduled a length-aware
+    gap after the first reply becomes visible
+    (first_reply_due, a time.monotonic() deadline).
     """
     second = get_other_group_bot(
         db, group_id, first_bot_guid
@@ -2519,13 +2529,19 @@ def _try_second_bot_response(
 
 
     emote = parsed.get('emote')
-    bot2_delay = calculate_dynamic_delay(
+    # Never ahead of the first reply: wait out what is
+    # left of its delay, then add this line's own gap.
+    first_reply_wait = (
+        max(0.0, first_reply_due - time.monotonic())
+        if first_reply_due is not None else 0.0
+    )
+    bot2_delay = first_reply_wait + calculate_dynamic_delay(
         len(msg2), config,
         prev_message_length=len(
             player_message
         ),
         responsive=True,
-    ) + 2  # offset after first bot
+    )
     insert_chat_message(
         db, bot2_guid, bot2_name, msg2,
         channel='party',
