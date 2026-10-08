@@ -47,6 +47,7 @@ from chatter_mode import (
     build_player_prompt_header,
     is_roleplay,
     resolve_player_personality,
+    typing_style_note,
 )
 from chatter_text import (
     cleanup_message,
@@ -248,6 +249,14 @@ def _describe_speaker(
         f"{speaker.get('name', 'Bot')} | "
         f"{gender_prefix}{race_name} {class_name}"
     )
+
+
+def _typing_suffix(speaker: Dict, mode: str) -> str:
+    """Roster suffix with a normal-mode playerbot's typing habit."""
+    if speaker.get('is_npc'):
+        return ''
+    note = typing_style_note(speaker.get('name', 'Bot'), mode)
+    return f"; {note}" if note else ''
 
 
 def _speaker_channel(speaker: Dict) -> str:
@@ -1003,6 +1012,7 @@ def _conversation_prompt(
                 )
             if tone:
                 line += f"; tone: {tone}"
+            line += _typing_suffix(speaker, mode)
             if (is_roleplay(mode) and backstory and _bs_enabled
                     and random.random() < _bs_chance):
                 line += (
@@ -1653,6 +1663,7 @@ def _player_say_conversation_prompt(
     roster = "\n".join(
         f"- [{'NPC' if speaker.get('is_npc') else 'PLAYERBOT'}] "
         f"{_describe_speaker(db, speaker)}"
+        f"{_typing_suffix(speaker, mode)}"
         for speaker in participants
     )
     nearby_names = extra.get('nearby_names') or []
@@ -1881,6 +1892,7 @@ def _player_emote_conversation_prompt(
     roster = "\n".join(
         f"- [{'NPC' if speaker.get('is_npc') else 'PLAYERBOT'}] "
         f"{_describe_speaker(db, speaker)}"
+        f"{_typing_suffix(speaker, mode)}"
         for speaker in participants
     )
     lines = [

@@ -579,6 +579,19 @@ tone, traits or mood.
   turns); multi-bot party conversations gate each speaker's
   `backstory` field (`_gate_conversation_backstories()`), which
   `_append_bots_with_rp()` renders through the cast block.
+- **Typing style**: in normal mode `chatter_mode.resolve_typing_style()`
+  derives one stable typing habit from the bot's name (capitals,
+  punctuation and sentence completeness only), with no DB writes or LLM
+  calls. `build_player_chat_guidance()` carries the shared rule once per
+  prompt. `build_player_prompt_header()` states the speaker's habit for
+  single-speaker builders, `Persona.typing_style` renders through
+  `build_persona_block()` and `build_cast_lines()`, and builders with
+  their own speaker lists (Guild participants, proximity rosters, the
+  General-to-party relay, screenshot conversations) add
+  `typing_style_note()`. A builder that uses both the header and the
+  persona block passes `include_typing_style=False` to the block so the
+  habit appears once. Roleplay speech and NPCs never get one.
+  `LLMChatter.Persona.TypingStyle.Enable` turns it off.
 - **Flavor**: `chatter_prompts.py` owns the gates. Creative twists use
   `LLMChatter.Persona.TwistChance` and are labelled as optional angles.
   Spices must pass `LLMChatter.Persona.SpiceChance` before
@@ -588,7 +601,8 @@ tone, traits or mood.
   is no random per-message mood sequence.
 
 Bridge startup loads the flavor settings once from
-`chatter_group.init_group_config()` (`configure_prompt_flavor()`).
+`chatter_group.init_group_config()` (`configure_prompt_flavor()`) and
+the typing-style switch from `chatter_mode.configure_typing_style()`.
 
 ## Conversation Thread Ownership
 

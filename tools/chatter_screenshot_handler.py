@@ -52,6 +52,7 @@ from chatter_mode import (
     build_player_chat_guidance,
     build_player_prompt_header,
     is_roleplay,
+    typing_style_note,
 )
 from chatter_prompts import build_environmental_context_lines
 from chatter_text import (
@@ -506,6 +507,7 @@ def _screenshot_conversation(
         gender_prefix = (
             f"{b['gender']} " if b.get('gender') else ''
         )
+        typing_note = typing_style_note(b['name'], mode)
         bot_lines.append(
             f"- {b['name']}: {gender_prefix}"
             f"{b['race']} {b['class']}, "
@@ -514,7 +516,8 @@ def _screenshot_conversation(
                 f", tone: {tone_map.get(b['name'], '')}"
                 if tone_map.get(b['name'], '')
                 else ""
-            ))
+            )
+            + (f", {typing_note}" if typing_note else ""))
     bot_block = '\n'.join(bot_lines)
 
     # Build conversation prompt

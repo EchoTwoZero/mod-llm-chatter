@@ -35,6 +35,7 @@ from chatter_shared import (
 from chatter_mode import (
     build_player_chat_guidance,
     build_player_prompt_header,
+    typing_style_enabled,
 )
 from chatter_threads import (
     THREAD_REPORT_FIELD,
@@ -471,10 +472,13 @@ def build_dynamic_guidelines(
     else:
         extras = [
             "Common terms ok (lfg, lf, ty, np)",
-            "Can include a typo for realism",
             "Casual and natural chat style",
             "Brief and direct",
         ]
+        # With typing styles on, typos belong to the
+        # speakers who make them, not to a random line.
+        if not typing_style_enabled():
+            extras.append("Can include a typo for realism")
     if random.random() < 0.5:
         guidelines.append(random.choice(extras))
 
@@ -2108,7 +2112,7 @@ def build_event_statement_prompt(
         f"{rp_personality}\n\n"
         f"CONTEXT: {event_context}\n\n"
         f"{event_instruction}\n\n"
-        f"{build_persona_block(persona, mode)}"
+        f"{build_persona_block(persona, mode, include_typing_style=False)}"
         f"{rp_style}\n\n"
         f"Respond with a single short "
         f"sentence (under 100 "

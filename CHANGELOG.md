@@ -1,5 +1,32 @@
 # Changelog
 
+### 2026-10-07 - Per-Bot Typing Style (Normal Mode)
+
+* **Typing style**: In normal mode every playerbot now keeps one stable
+  typing habit, derived from its name: ordinary sentence case, all
+  lowercase, no final full stop, lowercase fragments, careful
+  punctuation, trailing dots, or the odd uncorrected typo. A habit
+  covers capitals, punctuation and sentence completeness only; it does
+  not change vocabulary, personality or friendliness. Ordinary typing
+  remains the most common single habit.
+* **Coherence**: The same bot types the same way in Party, Guild,
+  General, `/say`, battleground and raid chat, in single lines and
+  multi-bot conversations, and after restarts. No database or LLM calls
+  are involved. Roleplay speech and NPCs are unchanged.
+* **Guard rails**: The normal voice contract states that a habit
+  overrides general punctuation advice, that questions keep their
+  question mark, and that names and `{item:}`, `{quest:}` and `{spell:}`
+  placeholders are written exactly as given.
+* **Typos**: The random "can include a typo" General guideline is
+  dropped while typing styles are enabled; typos now belong to the bots
+  whose habit includes them.
+* **Configuration**: Add bridge-side
+  `LLMChatter.Persona.TypingStyle.Enable` (default `1`) to both
+  configuration templates. Set it to `0` to restore the previous prompts,
+  for example for a configured language without letter case.
+* **Upgrade**: Python and configuration only. Restart the chatter
+  bridge. No C++ build, database migration or worldserver restart.
+
 ### 2026-10-06 - LF Line Endings
 
 * **Repository**: Add `.gitattributes` forcing LF line endings, so

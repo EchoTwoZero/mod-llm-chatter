@@ -26,6 +26,7 @@ from chatter_group_state import (
 from chatter_mode import (
     build_player_chat_guidance,
     build_player_prompt_header_from_dict,
+    typing_style_note,
 )
 from chatter_shared import (
     append_conversation_json_instruction,
@@ -573,6 +574,9 @@ def _build_conversation_prompt(
         )
         if traits:
             line += f"; traits: {traits}"
+        typing_note = typing_style_note(bot['name'], mode)
+        if typing_note:
+            line += f"; {typing_note}"
         if bot.get('travel_context'):
             label = (
                 "travel context"

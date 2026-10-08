@@ -3067,7 +3067,8 @@ def build_idle_chatter_prompt(
             # The memory is the focus here, so the
             # backstory stays out of this path.
             memory_persona = build_persona_block(
-                without_backstory(persona), mode
+                without_backstory(persona), mode,
+                include_typing_style=False,
             )
             prompt = (
                 f"{build_player_prompt_header_from_dict(bot, mode)}\n"
@@ -3319,9 +3320,12 @@ def build_idle_chatter_prompt(
             f"You can use their name."
         )
 
+    idle_persona = build_persona_block(
+        persona, mode, include_typing_style=False,
+    )
     prompt = (
         f"{build_player_prompt_header_from_dict(bot, mode)}\n"
-        f"{build_persona_block(persona, mode)}\n"
+        f"{idle_persona}\n"
     )
     if speaker_talent_context:
         prompt += f"{speaker_talent_context}\n"
