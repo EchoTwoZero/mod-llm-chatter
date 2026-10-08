@@ -2538,8 +2538,8 @@ def build_zone_transition_prompt(
         rp_context += f"{chat_history}\n"
 
     # Atmospheric zone/subzone lore is roleplay-only: its
-    # prose is full of sounds, scents and temperature that
-    # a normal-mode player cannot perceive.
+    # prose is full of scents, temperature and imagined
+    # sounds that a normal-mode player cannot perceive.
     zone_desc = ""
     if is_rp:
         zone_flavor = get_zone_flavor(zone_id)

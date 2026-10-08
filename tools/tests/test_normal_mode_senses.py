@@ -1,4 +1,4 @@
-"""Normal-mode playerbots perceive the game world only by sight."""
+"""Normal-mode playerbots perceive the game by sight and game audio."""
 
 import importlib
 import sys
@@ -90,19 +90,22 @@ def _lore_samples():
     }
 
 
-class SightOnlyContractTests(unittest.TestCase):
-    def test_normal_voice_contract_is_sight_only(self):
+class PlayerSensesContractTests(unittest.TestCase):
+    def test_normal_voice_contract_allows_sight_and_game_audio(self):
         for channel in (
             'party', 'general', 'guild', 'say', 'raid', 'battleground',
         ):
             text = build_player_chat_guidance('normal', channel)
             self.assertEqual(text.count(NORMAL_MODE_SENSES_RULE), 1)
         for phrase in (
-            'You only see the game world',
-            'never claim to hear, smell, taste, touch or physically feel',
+            "what is on your screen and the game's own audio",
+            'music, sound effects, voice lines and audio cues',
+            'Never claim to smell, taste, touch or physically feel',
             'background lore, never as something you perceive',
+            'when the prompt or chat supplies it',
         ):
             self.assertIn(phrase, NORMAL_MODE_SENSES_RULE)
+        self.assertNotIn('never claim to hear', NORMAL_MODE_SENSES_RULE)
 
     def test_roleplay_and_npc_voices_are_unchanged(self):
         self.assertNotIn(
@@ -183,33 +186,44 @@ class LoreProseTests(unittest.TestCase):
 
 
 class TopicPoolTests(unittest.TestCase):
-    def test_normal_pools_no_longer_prompt_other_senses(self):
+    def test_normal_pools_drop_body_sensations_and_heavy_scenery(self):
         removed = {
             'message categories': (MESSAGE_CATEGORIES, (
-                "noting the game's ambient sounds",
                 'mentioning being tired or hungry',
                 'commenting on the mood the zone creates',
+            )),
+            'ambient topics': (AMBIENT_CHAT_TOPICS, (
+                'complaining about being hungry or thirsty',
+                'commenting on the weather',
+                'commenting on the scenery or surroundings',
+            )),
+        }
+        for label, (pool, entries) in removed.items():
+            for entry in entries:
+                self.assertNotIn(entry, pool, label)
+
+    def test_normal_pools_keep_game_audio(self):
+        kept = {
+            'message categories': (MESSAGE_CATEGORIES, (
+                "noting the game's ambient sounds",
             )),
             'spices': (PERSONALITY_SPICES, (
                 'the ambient sound is making the area feel eerie',
                 'your music is a little too loud for the game audio',
             )),
             'ambient topics': (AMBIENT_CHAT_TOPICS, (
-                'complaining about being hungry or thirsty',
                 'mentioning that the game music fits the current area well',
                 'wondering whether a sound cue came from the game or voice '
                 'chat',
-                'commenting on the weather',
-                'commenting on the scenery or surroundings',
             )),
             'proximity topics': (PROXIMITY_PLAYER_CHAT_TOPICS, (
                 'commenting on the music changing in this area',
                 'asking whether the game sound gave away something nearby',
             )),
         }
-        for label, (pool, entries) in removed.items():
+        for label, (pool, entries) in kept.items():
             for entry in entries:
-                self.assertNotIn(entry, pool, label)
+                self.assertIn(entry, pool, label)
 
     def test_scenery_and_sensation_topics_stay_in_roleplay(self):
         for entry in (
@@ -234,9 +248,10 @@ class TopicPoolTests(unittest.TestCase):
                 'remarking on how empty or busy the area is',
                 'noting something weird or unexpected',
                 "commenting on a zone's visual design",
+                "noting the game's ambient sounds",
             )
         ]
-        self.assertEqual(len(scenery), 4)
+        self.assertEqual(len(scenery), 5)
         self.assertLess(len(scenery) / len(MESSAGE_CATEGORIES), 0.06)
 
 

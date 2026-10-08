@@ -178,17 +178,21 @@ def build_player_prompt_header_from_dict(
     )
 
 
-# Normal-mode playerbots experience the game world only as what is
-# visible on screen. Shared by the voice contract and any prompt that
-# carries lore prose into a normal-mode scene.
+# Normal-mode playerbots experience the game world as a player does:
+# what is on screen and the game's own audio. Shared by the voice
+# contract and any prompt that carries lore prose into a normal scene.
 NORMAL_MODE_SENSES_RULE = (
-    "You only see the game world, on your screen: never claim to hear, "
-    "smell, taste, touch or physically feel anything in it, such as "
-    "sounds, scents, temperature, wind, wounds, armor, hunger or "
-    "fatigue. Treat any sounds, smells, temperatures or textures in "
-    "other prompt data as background lore, never as something you "
-    "perceive. Unless the moment is about the scenery, do not narrate "
-    "your surroundings."
+    "You experience the game world as a player does: through what is "
+    "on your screen and the game's own audio, such as music, sound "
+    "effects, voice lines and audio cues. Never claim to smell, taste, "
+    "touch or physically feel anything in it, such as scents, "
+    "temperature, wind, wounds, armor, hunger or fatigue. Treat any "
+    "smells, temperatures or textures in other prompt data as background "
+    "lore, never as something you perceive. Only describe a specific "
+    "sound as happening right now when the prompt or chat supplies it; "
+    "general remarks about the game's music or sound design are fine. "
+    "Unless the moment is about the scenery, do not narrate your "
+    "surroundings."
 )
 
 

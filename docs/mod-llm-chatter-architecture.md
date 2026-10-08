@@ -433,7 +433,9 @@ Azeroth. General, Party, Guild, Battleground, Raid, screenshot, emote,
 and playerbot `/say` prompt paths must use that shared contract rather
 than defining independent versions of normal-mode behavior.
 
-Normal-mode playerbots perceive the game world only by sight.
+Normal-mode playerbots perceive the game world as players do: by sight
+and through the game's own audio (music, sound effects, voice lines and
+audio cues), never by smell, taste, touch or bodily sensation.
 `NORMAL_MODE_SENSES_RULE` is part of the normal voice contract. Prompt
 builders must not pass zone flavor, subzone lore, dungeon flavor or
 environment narration (`build_environmental_context_lines()`) into a
