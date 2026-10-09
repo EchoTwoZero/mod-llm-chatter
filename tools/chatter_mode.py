@@ -5,6 +5,17 @@ in-world, including when they share a proximity scene with playerbots.
 """
 
 import hashlib
+import logging
+
+from chatter_text import (
+    HABIT_LOWERCASE,
+    HABIT_NO_APOSTROPHES,
+    HABIT_NO_FINAL_STOP,
+    HABIT_TRAIL_OFF,
+    apply_typing_habits,
+)
+
+logger = logging.getLogger(__name__)
 
 
 _NORMAL_PLAYER_STYLE_PROFILES = [
@@ -42,6 +53,89 @@ _NORMAL_PLAYER_EXTRA_TRAITS = [
     'thoughtful',
     'game-focused',
 ]
+
+
+# How a normal-mode player types: (weight, description). These cover
+# mechanics only (capitals, punctuation, sentence completeness), never
+# vocabulary, content or attitude, and none drops question marks.
+# Weights keep ordinary typing the most common single habit.
+_NORMAL_PLAYER_TYPING_STYLES = [
+    (22, 'ordinary sentence case with normal punctuation'),
+    (16, 'all lowercase, no full stop at the end'),
+    (14, 'capitalises the first word but leaves off the final '
+         'full stop'),
+    (12, 'all lowercase, light on punctuation, skips apostrophes '
+         '(dont, im, thats)'),
+    (10, 'lowercase fragments rather than full sentences'),
+    (8, 'tidy, complete sentences with careful punctuation'),
+    (6, 'tends to trail off with ... rather than end a sentence'),
+    (6, 'lowercase and quick, now and then leaves a small typo '
+        'uncorrected'),
+    (6, 'mostly tidy, but drops the odd capital or apostrophe when '
+        'typing fast'),
+]
+
+# The part of each style that is applied to finished text, because
+# models drift back to tidy sentences. Fragments, typos and dropped
+# capitals stay prompt-only: they cannot be imposed mechanically.
+_TYPING_STYLE_HABITS = {
+    'all lowercase, no full stop at the end': frozenset(
+        {HABIT_LOWERCASE, HABIT_NO_FINAL_STOP}),
+    'capitalises the first word but leaves off the final '
+    'full stop': frozenset({HABIT_NO_FINAL_STOP}),
+    'all lowercase, light on punctuation, skips apostrophes '
+    '(dont, im, thats)': frozenset(
+        {HABIT_LOWERCASE, HABIT_NO_FINAL_STOP, HABIT_NO_APOSTROPHES}),
+    'lowercase fragments rather than full sentences': frozenset(
+        {HABIT_LOWERCASE, HABIT_NO_FINAL_STOP}),
+    'tends to trail off with ... rather than end a sentence':
+        frozenset({HABIT_TRAIL_OFF}),
+    'lowercase and quick, now and then leaves a small typo '
+    'uncorrected': frozenset({HABIT_LOWERCASE, HABIT_NO_FINAL_STOP}),
+}
+
+TYPING_STYLE_RULE = (
+    "Where a speaker's typing style is given, it only describes how "
+    "that person types. It applies to every message they write and "
+    "overrides general advice about capitals, punctuation and complete "
+    "sentences, but never changes what they say or how friendly they "
+    "are. Questions keep their question mark, and names and any "
+    "{item:}, {quest:} or {spell:} placeholders are written exactly "
+    "as given."
+)
+
+# Loaded once at bridge startup by configure_typing_style(). The mode
+# and language let delivery-side code apply habits without a config.
+_typing_style_enabled = True
+_typing_mode = 'normal'
+_typing_english = True
+
+
+def configure_typing_style(config) -> None:
+    """Load the typing-style switch, chatter mode and language."""
+    global _typing_style_enabled, _typing_mode, _typing_english
+    config = config or {}
+    try:
+        _typing_style_enabled = int(config.get(
+            'LLMChatter.Persona.TypingStyle.Enable', 1
+        )) != 0
+    except (TypeError, ValueError, AttributeError):
+        logger.error(
+            "Failed to parse LLMChatter.Persona.TypingStyle.Enable"
+        )
+        _typing_style_enabled = True
+    _typing_mode = normalize_chatter_mode(
+        config.get('LLMChatter.ChatterMode', 'normal')
+    )
+    language = str(
+        config.get('LLMChatter.Language', 'GB') or 'GB'
+    ).strip().upper()
+    _typing_english = language in ('GB', 'US', 'EN')
+
+
+def typing_style_enabled() -> bool:
+    """Return whether normal-mode playerbots get a typing style."""
+    return _typing_style_enabled
 
 
 def normalize_chatter_mode(mode: str) -> str:
@@ -85,6 +179,57 @@ def resolve_player_personality(
         + [_NORMAL_PLAYER_EXTRA_TRAITS[extra_index]],
         player_tone,
     )
+
+
+def resolve_typing_style(name: str, mode: str = 'normal') -> str:
+    """Return a bot's stable typing habit, or '' when it has none.
+
+    Derived from the bot name like the normal player-style profile,
+    so the same bot types the same way in every channel and after
+    every restart. Roleplay speech is spoken, not typed, and never
+    gets one.
+    """
+    if is_roleplay(mode) or not _typing_style_enabled:
+        return ''
+    return _pick_typing_style(name)
+
+
+def _pick_typing_style(name: str) -> str:
+    seed = str(name or 'playerbot').strip().casefold().encode('utf-8')
+    digest = hashlib.sha256(seed).digest()
+    roll = int.from_bytes(digest[8:12], 'big') % sum(
+        weight for weight, _ in _NORMAL_PLAYER_TYPING_STYLES
+    )
+    for weight, style in _NORMAL_PLAYER_TYPING_STYLES:
+        if roll < weight:
+            return style
+        roll -= weight
+    return ''
+
+
+def apply_typing_style(name: str, message: str) -> str:
+    """Apply a playerbot's mechanical typing habits to its message.
+
+    Uses the mode and language loaded by configure_typing_style(), so
+    message-insertion code needs no config. Roleplay mode, a disabled
+    switch and ordinary styles return the message unchanged. Never
+    call this for NPC speech.
+    """
+    style = resolve_typing_style(name, _typing_mode)
+    habits = _TYPING_STYLE_HABITS.get(style)
+    if not habits:
+        return message
+    return apply_typing_habits(message, habits, english=_typing_english)
+
+
+def typing_style_note(
+    name: str,
+    mode: str = 'normal',
+    label: str = 'types',
+) -> str:
+    """Return ``"<label>: <style>"`` for a speaker, or '' for none."""
+    style = resolve_typing_style(name, mode)
+    return f"{label}: {style}" if style else ''
 
 
 def build_player_identity(
@@ -149,8 +294,13 @@ def build_player_prompt_header(
     channel: str = 'party',
     gear: str = '',
 ) -> str:
-    """Build a playerbot identity followed by its channel voice contract."""
-    return (
+    """Build a playerbot identity followed by its channel voice contract.
+
+    Normal mode also states how this speaker types. A builder that
+    adds build_persona_block() to the same prompt passes
+    include_typing_style=False there, so the habit is stated once.
+    """
+    header = (
         build_player_identity(
             name, race, class_name, level, gender, mode,
             gear,
@@ -158,6 +308,8 @@ def build_player_prompt_header(
         + "\n"
         + build_player_chat_guidance(mode, channel)
     )
+    note = typing_style_note(name, mode, label='How you type')
+    return f"{header}\n{note}" if note else header
 
 
 def build_player_prompt_header_from_dict(
@@ -229,6 +381,7 @@ def build_player_chat_guidance(
         "abuse, l33tspeak, meme spam, current social-media slang, and "
         "customer-service or motivational-assistant phrasing. Natural "
         "kindness, patience, and complete sentences are welcome."
+        + (f" {TYPING_STYLE_RULE}" if _typing_style_enabled else "")
     )
 
 

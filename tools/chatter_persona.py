@@ -6,6 +6,8 @@ chatter channel (party, guild, General):
 - identity: traits, tone and (roleplay only) backstory, resolved from
   the bot's active group row, then the persistent identity row, then
   a deterministic fallback seeded from the bot's name (else GUID)
+- typing style: in normal mode, the stable habit ``chatter_mode``
+  derives from the bot's name, so a bot types the same way everywhere
 - mood: the bot's real event mood from ``chatter_group_state``, the
   same in every channel, and never invented
 - rendering: the shared persona block and conversation cast, which
@@ -25,7 +27,11 @@ from typing import Iterable, List, Optional, Sequence
 
 from chatter_constants import PERSONALITY_TRAITS
 from chatter_group_state import get_bot_mood_label_by_guid
-from chatter_mode import is_roleplay, resolve_player_personality
+from chatter_mode import (
+    is_roleplay,
+    resolve_player_personality,
+    resolve_typing_style,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +62,7 @@ class Persona:
 
     ``mood`` is empty when the bot has no live event mood (or is
     neutral); renderers then emit no mood line at all.
+    ``typing_style`` is set only for normal-mode playerbots.
     """
 
     name: str
@@ -64,6 +71,7 @@ class Persona:
     backstory: str = ''
     mood: str = ''
     source: str = 'fallback'
+    typing_style: str = ''
 
 
 # ------------------------------------------------------------------
@@ -184,6 +192,7 @@ def persona_from_fields(
             tone=player_tone,
             mood=mood,
             source=source,
+            typing_style=resolve_typing_style(bot_name, mode),
         )
     fb_traits, fb_tone = fallback_identity(bot_guid, bot_name, mode)
     clean = _clean_traits(traits)
@@ -382,8 +391,13 @@ def party_reaction_backstory(config, backstory, mode) -> str:
 
 def build_persona_block(
     persona: Persona, mode: str, include_rule: bool = True,
+    include_typing_style: bool = True,
 ) -> str:
-    """Render a single speaker's persona as prompt lines."""
+    """Render a single speaker's persona as prompt lines.
+
+    Pass include_typing_style=False when the same prompt already
+    carries build_player_prompt_header(), which states it.
+    """
     lines = []
     if persona.traits:
         lines.append(
@@ -391,6 +405,8 @@ def build_persona_block(
         )
     if persona.tone:
         lines.append(f"Your tone: {persona.tone}")
+    if include_typing_style and persona.typing_style:
+        lines.append(f"How you type: {persona.typing_style}")
     backstory_block = format_backstory_block(persona.backstory, mode)
     if backstory_block:
         lines.append(backstory_block)
@@ -414,6 +430,8 @@ def build_cast_lines(
             bits.append(f"personality: {', '.join(p.traits)}")
         if p.tone:
             bits.append(f"tone: {p.tone}")
+        if p.typing_style:
+            bits.append(f"types: {p.typing_style}")
         mood_line = format_mood_line(p.mood, subject='them')
         if mood_line:
             bits.append(mood_line)

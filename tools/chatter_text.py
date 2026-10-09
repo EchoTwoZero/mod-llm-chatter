@@ -538,6 +538,92 @@ def is_too_similar(
 
 
 # ============================================================
+# TYPING HABITS
+# ============================================================
+
+# Mechanical habits a typing style can impose on finished text.
+HABIT_LOWERCASE = 'lowercase'
+HABIT_NO_FINAL_STOP = 'no_final_stop'
+HABIT_NO_APOSTROPHES = 'no_apostrophes'
+HABIT_TRAIL_OFF = 'trail_off'
+
+# Never touched: WoW links (|c...|H...|h[Name]|h|r), bare |H links,
+# {item:}/{quest:}/{spell:}/{target} placeholders and [bracketed]
+# names that delivery turns into links.
+_PROTECTED_SPAN = re.compile(
+    r'\|c[0-9A-Fa-f]{6,8}\|H.*?\|h\|r'
+    r'|\|H.*?\|h'
+    r'|\{[^{}]*\}'
+    r'|\[[^\[\]]*\]'
+)
+_MASK = '\x00{}\x00'
+_MASK_RE = re.compile('\x00(\\d+)\x00')
+# The word at the start of the message or of a sentence. Only a
+# plainly capitalised word is lowercased; ALL CAPS words (shouting,
+# acronyms) and inner capitals (VanCleef, Zul'Farrak) are kept.
+_SENTENCE_START_WORD = re.compile(
+    r"(^|[.!?][\"')]?\s+)([A-Z][A-Za-z'\u2019]*)"
+)
+
+
+def _lower_sentence_start(match):
+    word = match.group(2)
+    if len(word) > 1 and any(c.isupper() for c in word[1:]):
+        return match.group(0)
+    return match.group(1) + word[0].lower() + word[1:]
+_PRONOUN_I = re.compile(r"\bI(?=\b|['\u2019])")
+_CONTRACTION_APOSTROPHE = re.compile(r"(?<=[a-z])['\u2019](?=[a-z])")
+
+
+def apply_typing_habits(
+    message: str, habits, english: bool = True,
+) -> str:
+    """Apply a speaker's mechanical typing habits to finished text.
+
+    Prompts describe the habit, but models drift back to tidy
+    sentences, so the purely mechanical part is enforced here:
+    lowercase sentence starts and the pronoun "I", dropping the
+    final full stop, dropping apostrophes inside lowercase
+    contractions, or trailing off with "...". Capitalised words
+    inside a sentence (names, places), ALL CAPS words, question
+    and exclamation marks, links and placeholders are kept, so
+    mentions and link conversion still work. Apostrophe and
+    pronoun rules are English-only.
+    """
+    if not message or not habits:
+        return message
+    habits = set(habits)
+
+    spans = []
+
+    def mask(match):
+        spans.append(match.group(0))
+        return _MASK.format(len(spans) - 1)
+
+    text = _PROTECTED_SPAN.sub(mask, message)
+
+    if HABIT_LOWERCASE in habits:
+        if english:
+            text = _PRONOUN_I.sub('i', text)
+        text = _SENTENCE_START_WORD.sub(_lower_sentence_start, text)
+    if HABIT_NO_APOSTROPHES in habits and english:
+        text = _CONTRACTION_APOSTROPHE.sub('', text)
+
+    stripped = text.rstrip()
+    trailing = text[len(stripped):]
+    ends_with_stop = (
+        stripped.endswith('.') and not stripped.endswith('..')
+    )
+    if ends_with_stop and HABIT_TRAIL_OFF in habits:
+        stripped = stripped + '..'
+    elif ends_with_stop and HABIT_NO_FINAL_STOP in habits:
+        stripped = stripped[:-1].rstrip()
+    text = stripped + trailing
+
+    return _MASK_RE.sub(lambda m: spans[int(m.group(1))], text)
+
+
+# ============================================================
 # STATEMENT LENGTH ENFORCEMENT
 # ============================================================
 

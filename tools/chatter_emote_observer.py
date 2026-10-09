@@ -536,7 +536,10 @@ def _build_party_bot_prompt(
         gender=bot_gender, mode=mode, channel='party',
         gear=gear,
     )
-    prompt = f"{identity}\n{build_persona_block(persona, mode)}"
+    persona_block = build_persona_block(
+        persona, mode, include_typing_style=False,
+    )
+    prompt = f"{identity}\n{persona_block}"
     if party_context:
         prompt += f"\n{party_context}"
     if is_custom:
