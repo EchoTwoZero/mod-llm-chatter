@@ -678,6 +678,29 @@ LLMChatter.PlayerChat.OptionalCasualReplyChance = 20
 LLMChatter.PlayerChat.BriefCasualLengthWeights = 35,45,20
 
 #
+#   LLMChatter.PlayerChat.DynamicPacing.* [BRIDGE]
+#       Length-aware delivery delay for bot replies to a player's Party
+#       or General message, so a short acknowledgement arrives sooner
+#       than a long answer. MinSeconds + characters / CharsPerSecond
+#       sets how long the reply takes to compose, bounded by MaxSeconds,
+#       with JitterPercent variation inside the bounds. For the first
+#       reply, the time already spent since the player spoke (queueing
+#       and LLM generation) counts towards that time, so a slow provider
+#       adds only MinSeconds. Later lines of a multi-bot reply use the
+#       same formula as the gap after the previous line. General replies
+#       keep their existing 5-second ceiling, and Party lines still
+#       respect PartyGate.ResponsiveMinGapSeconds. Guild and proximity
+#       replies use their own pacing settings.
+#       Defaults: enabled, 1-8 seconds, 10 chars/sec, 20% variation.
+#       Set Enable = 0 for the previous fixed 4-8 second delay.
+#
+LLMChatter.PlayerChat.DynamicPacing.Enable = 1
+LLMChatter.PlayerChat.DynamicPacing.MinSeconds = 1
+LLMChatter.PlayerChat.DynamicPacing.MaxSeconds = 8
+LLMChatter.PlayerChat.DynamicPacing.CharsPerSecond = 10
+LLMChatter.PlayerChat.DynamicPacing.JitterPercent = 20
+
+#
 #   LLMChatter.PlayerChat.IgnoredPrefixes [SERVER]
 #       Comma-separated literal prefixes for player-authored Party,
 #       General, Guild, and /say messages that Chatter must ignore.

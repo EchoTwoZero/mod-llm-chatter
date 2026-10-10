@@ -1,5 +1,25 @@
 # Changelog
 
+### 2026-10-07 - Length-Aware Player Reply Timing
+
+* **Reply timing**: Replies to a player's Party or General message no
+  longer wait a fixed 4-8 seconds after generation. The delay now grows
+  with the reply's own length within configurable bounds, so a short
+  acknowledgement arrives sooner than a long answer. Variation is sampled
+  inside the bounds and survives at both limits.
+* **Generation latency**: For the first reply, the time since the player
+  spoke (queueing and LLM generation, read from the event row on the
+  database clock) counts towards the delay instead of being added on
+  top. Slow providers add only the minimum.
+* **Second party reply**: The optional second bot now waits out what is
+  left of the first reply's delay before adding its own gap, replacing
+  the fixed two-second offset.
+* **Configuration**: Add bridge-side
+  `LLMChatter.PlayerChat.DynamicPacing.Enable`, `MinSeconds`,
+  `MaxSeconds`, `CharsPerSecond` and `JitterPercent` (defaults `1`, `1`,
+  `8`, `10`, `20`) to both configuration templates. Set `Enable = 0` to
+  keep the previous fixed delay. General replies keep their 5-second
+  ceiling; Guild and proximity pacing are unchanged.
 ### 2026-10-08 - Player Senses in Normal Mode
 
 * **Cause**: Several party prompts passed roleplay lore prose to

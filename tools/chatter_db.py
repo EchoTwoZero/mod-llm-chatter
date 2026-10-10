@@ -1730,6 +1730,37 @@ def cleanup_all_session_data(db):
         )
 
 
+def get_event_age_seconds(db, event_id) -> float:
+    """Seconds since an event row was queued.
+
+    Measured on the database clock, which also stamps
+    created_at and deliver_at, so the bridge host's clock
+    and timezone do not matter. Returns 0.0 when the age
+    is unknown; pacing then adds no latency credit.
+    """
+    if not event_id:
+        return 0.0
+    try:
+        cursor = db.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT TIMESTAMPDIFF("
+            "SECOND, created_at, NOW()) AS age_seconds "
+            "FROM llm_chatter_events WHERE id = %s",
+            (event_id,)
+        )
+        row = cursor.fetchone()
+        cursor.close()
+        if not row or row.get('age_seconds') is None:
+            return 0.0
+        return max(0.0, float(row['age_seconds']))
+    except Exception:
+        logger.error(
+            "Event age lookup failed for event %s",
+            event_id, exc_info=True,
+        )
+        return 0.0
+
+
 def mark_event(db, event_id, status):
     """Set event status (and processed_at if completed).
 
