@@ -1,5 +1,35 @@
 # Changelog
 
+### 2026-10-08 - Player Senses in Normal Mode
+
+* **Cause**: Several party prompts passed roleplay lore prose to
+  normal-mode bots. Zone and subzone arrivals received the zone
+  "atmosphere" and subzone descriptions, party replies to the player
+  received the subzone description, and dungeon entries received the
+  dungeon atmosphere. Those descriptions are dense with scents, chill and
+  breezes, so bots that were meant to speak as players commented on
+  feeling cold or smelling things. World-event conversations also added
+  time, season and weather narration, and a few normal-mode topics asked
+  about hunger.
+* **Player senses**: The normal voice contract now states that a
+  playerbot experiences the game world as a player does, through the
+  screen and the game's own audio (music, sound effects, voice lines and
+  audio cues). It never claims to smell, taste, touch or feel anything in
+  it, treats smells, temperatures and textures in other prompt data as
+  background lore, describes a specific sound as happening only when the
+  prompt or chat supplies it, and does not narrate its surroundings unless
+  the moment is about the scenery.
+* **Lore**: Zone, subzone and dungeon lore prose and environment
+  narration reach roleplay prompts only. Normal prompts receive the plain
+  subzone name, and dungeon entries keep their known boss list.
+* **Topics**: Remove hunger and thirst prompts from the normal-mode
+  ambient topics and message categories; game-audio topics, categories
+  and spices stay. Scenery, weather and light topics move to roleplay
+  only, and the normal scenery categories shrink to five (four visual and
+  one game-audio) so bots call out their surroundings less often.
+* **Roleplay**: Roleplay prompts, lore and topic pools are unchanged.
+* **Upgrade**: Python only. Restart the chatter bridge. No C++ build,
+  configuration change or database migration.
 ### 2026-10-07 - Per-Bot Typing Style (Normal Mode)
 
 * **Typing style**: In normal mode every playerbot now keeps one stable

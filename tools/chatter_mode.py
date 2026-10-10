@@ -330,6 +330,24 @@ def build_player_prompt_header_from_dict(
     )
 
 
+# Normal-mode playerbots experience the game world as a player does:
+# what is on screen and the game's own audio. Shared by the voice
+# contract and any prompt that carries lore prose into a normal scene.
+NORMAL_MODE_SENSES_RULE = (
+    "You experience the game world as a player does: through what is "
+    "on your screen and the game's own audio, such as music, sound "
+    "effects, voice lines and audio cues. Never claim to smell, taste, "
+    "touch or physically feel anything in it, such as scents, "
+    "temperature, wind, wounds, armor, hunger or fatigue. Treat any "
+    "smells, temperatures or textures in other prompt data as background "
+    "lore, never as something you perceive. Only describe a specific "
+    "sound as happening right now when the prompt or chat supplies it; "
+    "general remarks about the game's music or sound design are fine. "
+    "Unless the moment is about the scenery, do not narrate your "
+    "surroundings."
+)
+
+
 def build_player_chat_guidance(
     mode: str,
     channel: str = 'party',
@@ -368,9 +386,8 @@ def build_player_chat_guidance(
     return (
         "CHAT MODE: NORMAL. Speak as a person playing WoW, not as an "
         "inhabitant of Azeroth. Race, class, level, gear, deaths, travel, "
-        "weather, and locations describe the character or game; never claim "
-        "to physically feel the game world's wounds, armor, weather, hunger, "
-        "smells, or fatigue. "
+        "weather, and locations describe the character or game. "
+        f"{NORMAL_MODE_SENSES_RULE} "
         "If any other prompt data contains mystical, devotional, heroic, "
         "racial, or in-world personality and tone labels, treat it as legacy "
         "character metadata and do not express it. "
