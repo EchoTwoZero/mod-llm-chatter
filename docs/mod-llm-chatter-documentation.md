@@ -857,6 +857,30 @@ Nothing random overrides its identity.
   on every message and in every channel, instead of new random traits
   per reply. Normal mode keeps its player-style personality and never
   receives backstories.
+- **Typing style** (normal mode): each bot also keeps one typing habit,
+  derived from its name like the player-style profile: ordinary sentence
+  case, all lowercase, no final full stop, lowercase fragments, careful
+  punctuation, trailing dots, or the odd uncorrected typo. It covers
+  capitals, punctuation and sentence completeness only, never
+  vocabulary, content or attitude, and it is the same in Party, Guild,
+  General, `/say`, battleground and raid chat. The voice contract tells
+  the model that a habit overrides general punctuation advice, that
+  questions keep their question mark, and that names and
+  `{item:}`/`{quest:}`/`{spell:}` placeholders are written exactly.
+  Ordinary typing is the most common single habit. The random "can
+  include a typo" General guideline is dropped while this is on, so
+  typos belong to the bots that make them. Roleplay speech and NPCs are
+  unaffected. Models drift back to tidy sentences, so the mechanical
+  part of a habit is also applied to the finished text: lowercase
+  sentence starts and "I", no final full stop, no apostrophes in
+  lowercase contractions, or a trailing "...". Capitalised words inside
+  a sentence (names, places), ALL CAPS words, question and exclamation
+  marks, links and placeholders are kept; apostrophe and pronoun rules
+  apply to English only. This runs where the line is stored for
+  delivery (`insert_chat_message()`), for pre-cached instant reactions
+  and farewells, and for bot lines in Party and General history, never
+  for NPC or boss speech. Fragments, typos and dropped capitals stay
+  prompt-only.
 - **Mood**: comes only from real events (kills, loot, deaths, wipes,
   level-ups...) and is shared across channels, so a bot that just wiped
   sounds gloomy in guild chat too. Each new event nudges the mood back
@@ -916,8 +940,9 @@ Python/config changes by restarting the chatter bridge when deploying.
 | `LLMChatter.Persona.TwistChance` | 25 | Percent of prompts that get an optional creative angle |
 | `LLMChatter.Persona.SpiceChance` | 30 | Percent of prompts that get background feelings at all |
 | `LLMChatter.PersonalitySpiceCount` | 2 | How many background feelings when the spice roll passes |
+| `LLMChatter.Persona.TypingStyle.Enable` | 1 | Normal mode: give each bot a stable typing habit; `0` uses the model's default style for everyone |
 
-All three are bridge-side settings and need a bridge restart.
+All four are bridge-side settings and need a bridge restart.
 
 ### Conversation threads (party, guild, General)
 

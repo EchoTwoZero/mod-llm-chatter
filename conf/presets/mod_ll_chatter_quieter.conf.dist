@@ -3450,6 +3450,31 @@ LLMChatter.Persona.TwistChance = 25
 LLMChatter.Persona.SpiceChance = 30
 
 #
+#   LLMChatter.Persona.TypingStyle.Enable [BRIDGE]
+#       Normal mode only. Gives every playerbot one stable typing
+#       habit, derived from its name: ordinary sentence case, all
+#       lowercase, no final full stop, lowercase fragments, careful
+#       punctuation, trailing dots, the odd uncorrected typo, and so
+#       on. The same bot types the same way in Party, Guild, General,
+#       /say, battleground and raid chat, and after every restart.
+#       A habit covers capitals, punctuation and sentence completeness
+#       only; it never changes vocabulary, personality or friendliness.
+#       Questions keep their question mark, and names and item, quest
+#       and spell links are written normally. Typos then belong to the
+#       bots that make them instead of being suggested for a random
+#       General line. Roleplay speech and NPCs are never affected.
+#       Lowercasing, a dropped final full stop, dropped apostrophes
+#       and trailing dots are also applied to the finished message,
+#       because models tend to write tidy sentences anyway.
+#       Set to 0 to have every bot type in the model's default style,
+#       for example when LLMChatter.Language uses a script without
+#       letter case.
+#       Requires bridge restart to take effect.
+#       Default: 1
+#
+LLMChatter.Persona.TypingStyle.Enable = 1
+
+#
 #   LLMChatter.PersonalitySpiceCount [BRIDGE]
 #       How many background feelings a prompt gets when
 #       the SpiceChance roll passes (0-5). 0 disables

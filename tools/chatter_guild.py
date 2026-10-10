@@ -115,6 +115,7 @@ from chatter_mode import (
     build_player_prompt_header,
     is_roleplay,
     resolve_player_personality,
+    typing_style_note,
 )
 from chatter_prompts import (
     generate_conversation_length_sequence,
@@ -954,6 +955,11 @@ def _participant_identity_lines(
         lines.append(
             f"{name} speaking tone: {tone}."
         )
+    typing_note = typing_style_note(
+        name, mode, label='typing style',
+    )
+    if typing_note:
+        lines.append(f"{name} {typing_note}.")
     if is_roleplay(mode) and speaker.get('backstory'):
         background = str(speaker['backstory']).strip()
         lines.append(
