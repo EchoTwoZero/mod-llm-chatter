@@ -62,6 +62,7 @@ from chatter_shared import (
     wait_for_database,
     stagger_if_needed,
 )
+from chatter_mode import configure_typing_style
 from chatter_events import (
     cleanup_expired_events,
     reset_stuck_processing_events,
@@ -1239,6 +1240,7 @@ def main():
     set_emote_chance(int(config.get(
         'LLMChatter.EmoteChance', 50
     )))
+    configure_typing_style(config)
     language_code = str(config.get(
         'LLMChatter.Language', 'GB'
     )).strip().upper() or 'GB'

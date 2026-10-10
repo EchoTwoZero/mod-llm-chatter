@@ -1627,15 +1627,10 @@ CLASS_BITMASK = {
 # Also excluded: items, quests, quest rewards, spells, trade
 # (handled by dedicated message-type paths).
 _AMBIENT_CHAT_TOPICS_SHARED = [
-    # Environment / Zone
-    'commenting on the scenery or surroundings',
+    # Environment / Zone (scenery, weather and light are roleplay-only;
+    # see AMBIENT_CHAT_TOPICS_RP)
     'noticing something interesting in the zone',
     'remarking on the local wildlife or creatures',
-    'observing the landscape or terrain',
-    # Weather / Time
-    'commenting on the weather',
-    'noticing the time of day',
-    'mentioning how the light looks',
     # Class / Race
     'mentioning something about their class abilities',
     'mentioning something about their race or class perks',
@@ -1643,7 +1638,6 @@ _AMBIENT_CHAT_TOPICS_SHARED = [
     'sharing class-specific knowledge or tips',
     # Food / Drink
     'asking if anyone has food or water',
-    'complaining about being hungry or thirsty',
     'mentioning a favorite food or drink',
     # Travel / Mounts
     'talking about their mount',
@@ -1781,6 +1775,15 @@ AMBIENT_CHAT_TOPICS = _AMBIENT_CHAT_TOPICS_SHARED + [
 # Topics for roleplay mode: the original shared ambient topics plus
 # in-character lore, world flavor, faith, culture, and narrative entries.
 AMBIENT_CHAT_TOPICS_RP = _AMBIENT_CHAT_TOPICS_SHARED + [
+    # Scenery, weather, light and body sensations. Normal-mode players
+    # only see and hear the game, and scenery stays occasional, so these
+    # stay in-character.
+    'commenting on the scenery or surroundings',
+    'observing the landscape or terrain',
+    'commenting on the weather',
+    'noticing the time of day',
+    'mentioning how the light looks',
+    'complaining about being hungry or thirsty',
     # Lore / World
     'mentioning a rumor or piece of lore',
     'wondering about the history of this place',
@@ -2534,10 +2537,8 @@ GOSSIP_CREATIVE_TWISTS = [
 
 # Message categories - abstract directions that force original content
 MESSAGE_CATEGORIES = [
-    # Observations
-    "observation about surroundings or atmosphere",
+    # Observations (what is on screen; scenery stays occasional)
     "noticing something interesting nearby",
-    "comment about the zone's vibe",
     "remarking on how empty or busy the area is",
     "noting something weird or unexpected",
     # Reactions
@@ -2595,7 +2596,7 @@ MESSAGE_CATEGORIES = [
     # Meta and real life
     "random thought or musing",
     "commenting on real life briefly",
-    "mentioning being tired or hungry",
+    "mentioning being tired or hungry in real life",
     "talking about time played today",
     "referencing something outside the game",
     # Advice
@@ -2606,15 +2607,9 @@ MESSAGE_CATEGORIES = [
     # Story and presentation
     "commenting on a quest story or lore as a player",
     "reacting to NPC dialogue",
-    # Atmospheric
-    "appreciating the beauty of the landscape",
-    "commenting on the lighting or sky",
+    # Visual and audio design
+    "commenting on a zone's visual design",
     "noting the game's ambient sounds",
-    "commenting on the mood the zone creates",
-    "describing how weather changes the zone visually",
-    "getting immersed in the game for a moment",
-    "pausing the run to look at the view",
-    "being impressed by the scale of the game world",
     # Lore and wonder from a player's perspective
     "wondering what a magical object does in the game",
     "asking about the story behind an ancient place",

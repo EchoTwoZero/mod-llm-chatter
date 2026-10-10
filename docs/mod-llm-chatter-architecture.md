@@ -433,6 +433,16 @@ Azeroth. General, Party, Guild, Battleground, Raid, screenshot, emote,
 and playerbot `/say` prompt paths must use that shared contract rather
 than defining independent versions of normal-mode behavior.
 
+Normal-mode playerbots perceive the game world as players do: by sight
+and through the game's own audio (music, sound effects, voice lines and
+audio cues), never by smell, taste, touch or bodily sensation.
+`NORMAL_MODE_SENSES_RULE` is part of the normal voice contract. Prompt
+builders must not pass zone flavor, subzone lore, dungeon flavor or
+environment narration (`build_environmental_context_lines()`) into a
+normal-mode playerbot prompt; use the zone, subzone or dungeon name
+instead. Instance grounding in proximity scenes stays labelled as game
+knowledge that must not be physically sensed.
+
 Player-responsive Guild, General, party, proximity-speech, and
 proximity-emote prompts share one conversational-scale instruction from
 `chatter_shared.py`. The model must answer brief casual input in kind and
@@ -579,6 +589,26 @@ tone, traits or mood.
   turns); multi-bot party conversations gate each speaker's
   `backstory` field (`_gate_conversation_backstories()`), which
   `_append_bots_with_rp()` renders through the cast block.
+- **Typing style**: in normal mode `chatter_mode.resolve_typing_style()`
+  derives one stable typing habit from the bot's name (capitals,
+  punctuation and sentence completeness only), with no DB writes or LLM
+  calls. `build_player_chat_guidance()` carries the shared rule once per
+  prompt. `build_player_prompt_header()` states the speaker's habit for
+  single-speaker builders, `Persona.typing_style` renders through
+  `build_persona_block()` and `build_cast_lines()`, and builders with
+  their own speaker lists (Guild participants, proximity rosters, the
+  General-to-party relay, screenshot conversations) add
+  `typing_style_note()`. A builder that uses both the header and the
+  persona block passes `include_typing_style=False` to the block so the
+  habit appears once. Roleplay speech and NPCs never get one.
+  `chatter_mode.apply_typing_style()` (with the text transform
+  `chatter_text.apply_typing_habits()`) also enforces the mechanical
+  part on finished text: in `insert_chat_message()` for every playerbot
+  channel except `msay`/`myell` and NPC rows, before pre-cached lines
+  and farewells are stored (C++ sends those directly), and in the
+  Party and General history writers for bot lines. It reads the mode
+  and language loaded by `configure_typing_style()` and is idempotent.
+  `LLMChatter.Persona.TypingStyle.Enable` turns it off.
 - **Flavor**: `chatter_prompts.py` owns the gates. Creative twists use
   `LLMChatter.Persona.TwistChance` and are labelled as optional angles.
   Spices must pass `LLMChatter.Persona.SpiceChance` before
@@ -588,7 +618,8 @@ tone, traits or mood.
   is no random per-message mood sequence.
 
 Bridge startup loads the flavor settings once from
-`chatter_group.init_group_config()` (`configure_prompt_flavor()`).
+`chatter_group.init_group_config()` (`configure_prompt_flavor()`) and
+the typing-style switch from `chatter_mode.configure_typing_style()`.
 
 ## Conversation Thread Ownership
 

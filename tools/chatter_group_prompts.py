@@ -7,6 +7,7 @@ from chatter_shared import (
     get_zone_flavor,
     get_zone_name,
     get_subzone_lore,
+    get_subzone_name,
     get_dungeon_flavor,
     instance_has_sky,
     get_dungeon_bosses,
@@ -2254,10 +2255,16 @@ def build_player_response_prompt(
         subzone = get_subzone_lore(
             zone_id, area_id
         )
-        if subzone:
+        if is_rp and subzone:
             rp_context += (
                 f"\nCurrent subzone: {subzone}"
             )
+        elif not is_rp:
+            subzone_name = get_subzone_name(
+                zone_id, area_id
+            )
+            if subzone_name:
+                rp_context += f"\nSubzone: {subzone_name}"
 
     if is_rp:
         style = (
@@ -2530,24 +2537,26 @@ def build_zone_transition_prompt(
     if chat_history:
         rp_context += f"{chat_history}\n"
 
-    # Try to get atmospheric zone/subzone context
-    zone_flavor = get_zone_flavor(zone_id)
+    # Atmospheric zone/subzone lore is roleplay-only: its
+    # prose is full of scents, temperature and imagined
+    # sounds that a normal-mode player cannot perceive.
     zone_desc = ""
-    if zone_flavor:
-        zone_desc = (
-            f"\nZone atmosphere: {zone_flavor}\n"
-        )
-    subzone = get_subzone_lore(zone_id, area_id)
-    if subzone:
-        zone_desc += (
-            f"Current subzone: {subzone}\n"
-        )
+    if is_rp:
+        zone_flavor = get_zone_flavor(zone_id)
+        if zone_flavor:
+            zone_desc = (
+                f"\nZone atmosphere: {zone_flavor}\n"
+            )
+        subzone = get_subzone_lore(zone_id, area_id)
+        if subzone:
+            zone_desc += (
+                f"Current subzone: {subzone}\n"
+            )
 
     # Resolve subzone name for subzone events
     # Prefer lore name, fall back to DBC area_name
     area_label = ""
     if is_subzone and area_id:
-        from chatter_shared import get_subzone_name
         sn = get_subzone_name(zone_id, area_id)
         area_label = sn or area_name or ""
 
@@ -2893,10 +2902,11 @@ def build_dungeon_entry_prompt(
     if chat_history:
         rp_context += f"{chat_history}\n"
 
-    # Try to get dungeon-specific flavor
+    # Dungeon atmosphere is roleplay-only (see zone
+    # transitions); the boss list below stays for both.
     dungeon_flavor = get_dungeon_flavor(map_id)
     dungeon_desc = ""
-    if dungeon_flavor:
+    if is_rp and dungeon_flavor:
         dungeon_desc = (
             f"\nDungeon atmosphere: "
             f"{dungeon_flavor}\n"

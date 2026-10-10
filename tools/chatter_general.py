@@ -67,6 +67,7 @@ from chatter_persona import (
     persona_from_fields,
 )
 from chatter_mode import (
+    apply_typing_style,
     build_player_chat_guidance,
     build_player_identity,
 )
@@ -220,7 +221,11 @@ def _store_general_chat(
 ):
     """Store a message in General chat history
     and prune old messages per zone.
+
+    A bot's line is stored as delivered, with its typing habit.
     """
+    if is_bot:
+        message = apply_typing_style(speaker_name, message)
     cursor = db.cursor()
     cursor.execute("""
         INSERT INTO llm_general_chat_history

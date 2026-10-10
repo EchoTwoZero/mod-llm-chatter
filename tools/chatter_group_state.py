@@ -24,6 +24,7 @@ from chatter_shared import (
     strip_speaker_prefix,
 )
 from chatter_mode import (
+    apply_typing_style,
     build_player_prompt_header,
     is_roleplay,
     normalize_chatter_mode,
@@ -599,6 +600,8 @@ def _generate_farewell(
         farewell = strip_speaker_prefix(
             farewell, bot_name
         )
+        # C++ sends the farewell directly; apply the habit now.
+        farewell = apply_typing_style(bot_name, farewell)
         if not farewell or len(farewell) > 255:
             return
 
@@ -665,7 +668,13 @@ def _store_chat(
     db, group_id, speaker_guid,
     speaker_name, is_bot, message
 ):
-    """Store a message in group chat history."""
+    """Store a message in group chat history.
+
+    A bot's line is stored as it was delivered, with its typing
+    habit, so later prompts see how that bot really types.
+    """
+    if is_bot:
+        message = apply_typing_style(speaker_name, message)
     cursor = db.cursor()
     cursor.execute("""
         INSERT INTO llm_group_chat_history

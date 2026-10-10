@@ -20,6 +20,68 @@
   `8`, `10`, `20`) to both configuration templates. Set `Enable = 0` to
   keep the previous fixed delay. General replies keep their 5-second
   ceiling; Guild and proximity pacing are unchanged.
+### 2026-10-08 - Player Senses in Normal Mode
+
+* **Cause**: Several party prompts passed roleplay lore prose to
+  normal-mode bots. Zone and subzone arrivals received the zone
+  "atmosphere" and subzone descriptions, party replies to the player
+  received the subzone description, and dungeon entries received the
+  dungeon atmosphere. Those descriptions are dense with scents, chill and
+  breezes, so bots that were meant to speak as players commented on
+  feeling cold or smelling things. World-event conversations also added
+  time, season and weather narration, and a few normal-mode topics asked
+  about hunger.
+* **Player senses**: The normal voice contract now states that a
+  playerbot experiences the game world as a player does, through the
+  screen and the game's own audio (music, sound effects, voice lines and
+  audio cues). It never claims to smell, taste, touch or feel anything in
+  it, treats smells, temperatures and textures in other prompt data as
+  background lore, describes a specific sound as happening only when the
+  prompt or chat supplies it, and does not narrate its surroundings unless
+  the moment is about the scenery.
+* **Lore**: Zone, subzone and dungeon lore prose and environment
+  narration reach roleplay prompts only. Normal prompts receive the plain
+  subzone name, and dungeon entries keep their known boss list.
+* **Topics**: Remove hunger and thirst prompts from the normal-mode
+  ambient topics and message categories; game-audio topics, categories
+  and spices stay. Scenery, weather and light topics move to roleplay
+  only, and the normal scenery categories shrink to five (four visual and
+  one game-audio) so bots call out their surroundings less often.
+* **Roleplay**: Roleplay prompts, lore and topic pools are unchanged.
+* **Upgrade**: Python only. Restart the chatter bridge. No C++ build,
+  configuration change or database migration.
+### 2026-10-07 - Per-Bot Typing Style (Normal Mode)
+
+* **Typing style**: In normal mode every playerbot now keeps one stable
+  typing habit, derived from its name: ordinary sentence case, all
+  lowercase, no final full stop, lowercase fragments, careful
+  punctuation, trailing dots, or the odd uncorrected typo. A habit
+  covers capitals, punctuation and sentence completeness only; it does
+  not change vocabulary, personality or friendliness. Ordinary typing
+  remains the most common single habit.
+* **Coherence**: The same bot types the same way in Party, Guild,
+  General, `/say`, battleground and raid chat, in single lines and
+  multi-bot conversations, and after restarts. No database or LLM calls
+  are involved. Roleplay speech and NPCs are unchanged.
+* **Guard rails**: The normal voice contract states that a habit
+  overrides general punctuation advice, that questions keep their
+  question mark, and that names and `{item:}`, `{quest:}` and `{spell:}`
+  placeholders are written exactly as given.
+* **Typos**: The random "can include a typo" General guideline is
+  dropped while typing styles are enabled; typos now belong to the bots
+  whose habit includes them.
+* **Enforced habits**: Models tend to ignore a typing instruction and
+  write tidy sentences anyway, so the mechanical part of a habit is
+  applied to the finished text: lowercase sentence starts and "I", no
+  final full stop, no apostrophes in contractions, or trailing dots.
+  Names and places inside a sentence, ALL CAPS words, question marks,
+  links and placeholders are kept. It applies to delivered lines,
+  pre-cached instant reactions, farewells and bot lines stored in Party
+  and General history, and never to NPC or boss speech.
+* **Configuration**: Add bridge-side
+  `LLMChatter.Persona.TypingStyle.Enable` (default `1`) to both
+  configuration templates. Set it to `0` to restore the previous prompts,
+  for example for a configured language without letter case.
 * **Upgrade**: Python and configuration only. Restart the chatter
   bridge. No C++ build, database migration or worldserver restart.
 

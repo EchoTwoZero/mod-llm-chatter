@@ -29,6 +29,7 @@ from chatter_shared import (
     shorten_chat_message,
 )
 from chatter_constants import CLASS_NAMES, RACE_NAMES
+from chatter_mode import apply_typing_style
 
 logger = logging.getLogger(__name__)
 
@@ -461,6 +462,9 @@ def refill_precache_pool(db, client, config):
             message = shorten_chat_message(message)
 
             emote = parsed.get('emote')
+            # C++ sends cached lines directly, so the typing
+            # habit is applied here rather than at insert.
+            message = apply_typing_style(bot_name, message)
 
             # Insert into cache
             _insert_cached_response(
